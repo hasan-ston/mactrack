@@ -1,2 +1,0 @@
--- Useful indexes
--- Add CREATE INDEX statements as needed

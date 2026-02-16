@@ -1,2 +1,0 @@
--- Initial schema
--- Add CREATE TABLE statements for courses, professors, reviews
