@@ -22,3 +22,4 @@
 ## Deployment
 Build frontend: `npm run build` (output in web/dist)
 
+from project root: go run ./cmd/api/main.go

@@ -2,5 +2,4 @@ module mactrack
 
 go 1.21
 
-require (
-)
+require github.com/mattn/go-sqlite3 v1.14.19
