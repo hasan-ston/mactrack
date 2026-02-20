@@ -1,0 +1,18 @@
+[
+  {
+    "subject": "COMPSCI",
+    "course_number": "2C03",
+    "req_subject": "COMPSCI",
+    "req_course_number": "1XC3",
+    "kind": "PREREQ",
+    "note": "Must have C- or better"
+  },
+  {
+    "subject": "ANTHROP",
+    "course_number": "2AR3",
+    "req_subject": "ANTHROP",
+    "req_course_number": "1AA3",
+    "kind": "PREREQ",
+    "note": ""
+  }
+]
