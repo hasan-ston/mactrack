@@ -2,13 +2,13 @@ import requests
 import json
 import time
 
-def scrape_ratemyprofessors(school_id, num_professors=100):
+def scrape_ratemyprofessors(school_id, num_professors=2287):
     """
     Scrape professor data from RateMyProfessors using their GraphQL API
     
     Args:
         school_id: The base64 encoded school ID from RateMyProfessors
-        num_professors: Number of professors to scrape (default 100)
+        num_professors: Number of professors to scrape (default 2287)
     """
     
     professors = []
@@ -30,9 +30,10 @@ def scrape_ratemyprofessors(school_id, num_professors=100):
         "query": """
         query TeacherSearchResultsPageQuery(
           $query: TeacherSearchQuery!
+          $after: String
         ) {
           search: newSearch {
-            teachers(query: $query, first: 100) {
+            teachers(query: $query, first: 100, after: $after) {
               edges {
                 cursor
                 node {
@@ -64,66 +65,84 @@ def scrape_ratemyprofessors(school_id, num_professors=100):
                 "schoolID": school_id,
                 "fallback": True,
                 "departmentID": None
-            }
+            },
+            "after": None
         }
     }
     
+    has_next_page = True
+    cursor = None
+    response = None
+    
     try:
         print(f"Fetching professors from RateMyProfessors...")
-        response = requests.post(graphql_url, json=query, headers=headers)
         
-        if response.status_code == 200:
-            try:
-                data = response.json()
-            except json.JSONDecodeError:
-                print("Failed to parse JSON response")
-                print(f"Response text: {response.text[:500]}")
-                return professors
+        while has_next_page and len(professors) < num_professors:
+            if cursor:
+                query["variables"]["after"] = cursor
             
-            # Debug: print response structure
-            print(f"Response keys: {data.keys() if isinstance(data, dict) else 'Not a dict'}")
-            
-            # Parse the response
-            if isinstance(data, dict) and 'data' in data:
-                if data['data'] and 'search' in data['data'] and data['data']['search']:
-                    teachers = data['data']['search']['teachers']['edges']
-                    
-                    print(f"Found {len(teachers)} professors")
-                    
-                    for teacher in teachers[:num_professors]:
-                        prof_data = teacher['node']
-                        professors.append({
-                            'id': prof_data.get('id'),
-                            'first_name': prof_data.get('firstName'),
-                            'last_name': prof_data.get('lastName'),
-                            'school': prof_data.get('school', {}).get('name'),
-                            'school_id': prof_data.get('school', {}).get('id'),
-                            'avg_rating': prof_data.get('avgRating'),
-                            'num_ratings': prof_data.get('numRatings'),
-                            'department': prof_data.get('department'),
-                            'would_take_again_percent': prof_data.get('wouldTakeAgainPercent'),
-                            'avg_difficulty': prof_data.get('avgDifficulty')
-                        })
+            response = requests.post(graphql_url, json=query, headers=headers)
+        
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                except json.JSONDecodeError:
+                    print("Failed to parse JSON response")
+                    print(f"Response text: {response.text[:500]}")
+                    return professors
+                
+                # Debug: print response structure
+                print(f"Response keys: {data.keys() if isinstance(data, dict) else 'Not a dict'}")
+                
+                # Parse the response
+                if isinstance(data, dict) and 'data' in data:
+                    if data['data'] and 'search' in data['data'] and data['data']['search']:
+                        teachers = data['data']['search']['teachers']['edges']
+                        page_info = data['data']['search']['teachers']['pageInfo']
                         
-                        if len(professors) >= num_professors:
-                            break
+                        print(f"Found {len(teachers)} professors on this page")
+                        
+                        for teacher in teachers:
+                            prof_data = teacher['node']
+                            professors.append({
+                                'id': prof_data.get('id'),
+                                'first_name': prof_data.get('firstName'),
+                                'last_name': prof_data.get('lastName'),
+                                'school': prof_data.get('school', {}).get('name'),
+                                'school_id': prof_data.get('school', {}).get('id'),
+                                'avg_rating': prof_data.get('avgRating'),
+                                'num_ratings': prof_data.get('numRatings'),
+                                'department': prof_data.get('department'),
+                                'would_take_again_percent': prof_data.get('wouldTakeAgainPercent'),
+                                'avg_difficulty': prof_data.get('avgDifficulty')
+                            })
                             
-                    print(f"Successfully scraped {len(professors)} professors")
-                else:
-                    print("No search results found in response")
-                    if 'errors' in data:
-                        print(f"API Errors: {json.dumps(data['errors'], indent=2)}")
+                            if len(professors) >= num_professors:
+                                break
+                        
+                        has_next_page = page_info.get('hasNextPage', False)
+                        cursor = page_info.get('endCursor')
+                        
+                        print(f"Total scraped so far: {len(professors)}")
                     else:
-                        print(f"Response data: {json.dumps(data, indent=2)[:1000]}")
+                        print("No search results found in response")
+                        if 'errors' in data:
+                            print(f"API Errors: {json.dumps(data['errors'], indent=2)}")
+                        else:
+                            print(f"Response data: {json.dumps(data, indent=2)[:1000]}")
+                        has_next_page = False
+                else:
+                    print("Unexpected response structure")
+                    print(f"Response: {json.dumps(data, indent=2)[:1000] if isinstance(data, dict) else data}")
+                    has_next_page = False
             else:
-                print("Unexpected response structure")
-                print(f"Response: {json.dumps(data, indent=2)[:1000] if isinstance(data, dict) else data}")
-        else:
-            print(f"Request failed with status code: {response.status_code}")
-            print(f"Response: {response.text[:500]}")
-        
-        # Be respectful - add delay
-        time.sleep(1)
+                print(f"Request failed with status code: {response.status_code}")
+                print(f"Response: {response.text[:500]}")
+                break
+            
+            # Be respectful - add delay between page requests
+            if has_next_page:
+                time.sleep(1)
         
     except Exception as e:
         print(f"Error scraping data: {e}")
@@ -153,10 +172,10 @@ if __name__ == "__main__":
     print("RateMyProfessors Scraper")
     print("=" * 50)
     print(f"School ID: {school_id}")
-    print(f"Target: First 100 professors")
+    print(f"Target: First 2287 professors")
     print("=" * 50)
     
-    professors = scrape_ratemyprofessors(school_id, num_professors=100)
+    professors = scrape_ratemyprofessors(school_id, num_professors=2287)
     
     if professors:
         save_to_json(professors, 'rmp.json')
