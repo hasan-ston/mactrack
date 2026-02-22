@@ -7,51 +7,75 @@ import (
 	"strings"
 )
 
-// CoursesHandler serves GET /api/courses?q=search
-func CoursesHandler(repo *Repository) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		q := strings.TrimSpace(r.URL.Query().Get("q"))
-		var courses []Course
-		var err error
-		if q == "" {
-			// empty query — return first N rows
-			courses, err = repo.SearchCourses("")
-		} else {
-			courses, err = repo.SearchCourses(q)
-		}
-		if err != nil {
-			http.Error(w, "failed to query courses", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(courses)
+// PostUserPlanHandler serves POST /api/users/{id}/plan
+// Accepts year_index + season instead of plan_term_id — the handler
+// resolves or creates the plan_terms row internally so the frontend
+// doesn't need to know about it.
+func PostUserPlanHandler(repo *Repository) http.HandlerFunc {
+	type payload struct {
+		YearIndex    int    `json:"year_index"`
+		Season       string `json:"season"`
+		Subject      string `json:"subject"`
+		CourseNumber string `json:"course_number"`
+		Status       string `json:"status"`
 	}
-}
-
-// CourseHandler serves GET /api/courses/{id}
-func CourseHandler(repo *Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// path is expected like /api/courses/123
-		idStr := strings.TrimPrefix(r.URL.Path, "/api/courses/")
-		if idStr == "" {
-			http.Error(w, "missing id", http.StatusBadRequest)
+		// Parse user ID from path /api/users/{id}/plan
+		idStr := strings.TrimPrefix(r.URL.Path, "/api/users/")
+		idStr = strings.TrimSuffix(idStr, "/plan")
+		userID, err := strconv.Atoi(strings.Trim(idStr, "/"))
+		if err != nil || userID == 0 {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
 			return
 		}
-		id, err := strconv.Atoi(idStr)
+
+		var p payload
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			http.Error(w, "invalid body", http.StatusBadRequest)
+			return
+		}
+
+		// Validate required fields
+		if p.YearIndex == 0 || p.Season == "" || p.Subject == "" || p.CourseNumber == "" || p.Status == "" {
+			http.Error(w, "missing fields", http.StatusBadRequest)
+			return
+		}
+
+		// Step 1: find or create the plan_terms row for this user/year/season.
+		// INSERT OR IGNORE means it's a no-op if the row already exists.
+		_, err = repo.DB.Exec(`
+            INSERT OR IGNORE INTO plan_terms (user_id, year_index, season)
+            VALUES (?, ?, ?)`,
+			userID, p.YearIndex, p.Season,
+		)
 		if err != nil {
-			http.Error(w, "invalid id", http.StatusBadRequest)
+			http.Error(w, "failed to create plan term", http.StatusInternalServerError)
 			return
 		}
-		c, err := repo.GetCourseByID(id)
+
+		// Step 2: fetch the plan_term_id (whether just created or pre-existing)
+		var planTermID int
+		err = repo.DB.QueryRow(`
+            SELECT plan_term_id FROM plan_terms
+            WHERE user_id = ? AND year_index = ? AND season = ?`,
+			userID, p.YearIndex, p.Season,
+		).Scan(&planTermID)
 		if err != nil {
-			http.Error(w, "failed to fetch course", http.StatusInternalServerError)
+			http.Error(w, "failed to fetch plan term", http.StatusInternalServerError)
 			return
 		}
-		if c == nil {
-			http.NotFound(w, r)
+
+		// Step 3: insert the plan item linked to that term
+		_, err = repo.DB.Exec(`
+            INSERT OR IGNORE INTO plan_items (plan_term_id, subject, course_number, status, grade, note)
+            VALUES (?, ?, ?, ?, NULL, NULL)`,
+			planTermID, p.Subject, p.CourseNumber, p.Status,
+		)
+		if err != nil {
+			http.Error(w, "failed to insert plan item", http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(c)
+
+		w.WriteHeader(http.StatusCreated)
 	}
 }

@@ -1,39 +1,108 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { User, BookOpen, Calendar, Star, TrendingUp } from "lucide-react";
+import { User, BookOpen, Calendar, Star, TrendingUp, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
-import { mockUser, getCourseById } from "../data/mockData";
 import { RatingDisplay } from "../components/RatingDisplay";
 
+
+interface APIPlanItem {
+  plan_item_id: number;
+  plan_term_id: number;
+  subject: string;
+  course_number: string;
+  course_name: string | null;
+  status: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "DROPPED";
+  grade: string | null;
+  note: string | null;
+  year_index: number;
+  season: string;
+}
+
+// Hardcoded until auth is wired up — replace with real user context
+const MOCK_USER_ID = 1;
+const MOCK_USER_NAME = "John Doe";
+const MOCK_USER_EMAIL = "john.doe@mcmaster.ca";
+const MOCK_USER_PROGRAM = "Computer Science";
+const MOCK_USER_YEAR = 2;
+
+// Total units to graduate — replace with program-specific value once
+// the degree planner validation API is wired up
+const UNITS_TO_GRADUATE = 120;
+
+// Each McMaster course is typically 3 units — replace once coid is
+// linked to the courses table and real unit counts are available
+const UNITS_PER_COURSE = 3;
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export function UserDashboard() {
-  const user = mockUser;
-  const completedCourses = user.completedCourses.map(id => getCourseById(id)).filter(Boolean);
-  const plannedCourses = user.plannedCourses.map(pc => ({
-    ...pc,
-    course: getCourseById(pc.courseId)
-  })).filter(pc => pc.course);
+  const [planItems, setPlanItems] = useState<APIPlanItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const totalCreditsCompleted = completedCourses.reduce((sum, course) => 
-    course ? sum + course.credits : sum, 0
-  );
-  const totalCreditsPlanned = plannedCourses.reduce((sum, pc) => 
-    pc.course ? sum + pc.course.credits : sum, 0
-  );
+  // Fetch the user's full plan on mount
+  useEffect(() => {
+    fetch(`/api/users/${MOCK_USER_ID}/plan`)
+      .then(res => {
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        return res.json();
+      })
+      .then((data: APIPlanItem[]) => {
+        setPlanItems(data ?? []);
+        setError(null);
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
 
-  const averageGrade = completedCourses.reduce((sum, course) => 
-    course ? sum + course.classAverage : sum, 0
-  ) / (completedCourses.length || 1);
+  // ---------------------------------------------------------------------------
+  // Derived stats from real plan data
+  // ---------------------------------------------------------------------------
+
+  const completedItems = planItems.filter(pi => pi.status === "COMPLETED");
+  const plannedItems = planItems.filter(pi => pi.status === "PLANNED" || pi.status === "IN_PROGRESS");
+
+  const unitsCompleted = completedItems.length * UNITS_PER_COURSE;
+  const unitsPlanned = plannedItems.length * UNITS_PER_COURSE;
+  const unitsRemaining = UNITS_TO_GRADUATE - unitsCompleted;
+  const progressPercent = Math.min((unitsCompleted / UNITS_TO_GRADUATE) * 100, 100);
+
+  // ---------------------------------------------------------------------------
+  // Render states
+  // ---------------------------------------------------------------------------
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <p className="text-destructive">Failed to load dashboard: {error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Header */}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Header                                                               */}
+      {/* ------------------------------------------------------------------ */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">My Dashboard</h1>
           <p className="text-muted-foreground mt-1">
-            Welcome back, {user.name}
+            Welcome back, {MOCK_USER_NAME}
           </p>
         </div>
         <Button asChild>
@@ -44,7 +113,9 @@ export function UserDashboard() {
         </Button>
       </div>
 
-      {/* Profile Card */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Profile card                                                         */}
+      {/* ------------------------------------------------------------------ */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row gap-6">
@@ -54,28 +125,30 @@ export function UserDashboard() {
 
             <div className="flex-1 space-y-3">
               <div>
-                <h2 className="text-2xl font-bold">{user.name}</h2>
-                <p className="text-muted-foreground">{user.email}</p>
+                <h2 className="text-2xl font-bold">{MOCK_USER_NAME}</h2>
+                <p className="text-muted-foreground">{MOCK_USER_EMAIL}</p>
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">{user.program}</Badge>
-                <Badge variant="outline">Year {user.year}</Badge>
-                <Badge variant="outline">{totalCreditsCompleted} Credits Completed</Badge>
+                <Badge variant="secondary">{MOCK_USER_PROGRAM}</Badge>
+                <Badge variant="outline">Year {MOCK_USER_YEAR}</Badge>
+                <Badge variant="outline">{unitsCompleted} Units Completed</Badge>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Stats */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Stats                                                                */}
+      {/* ------------------------------------------------------------------ */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-blue-500" />
               <div>
-                <div className="text-2xl font-bold">{completedCourses.length}</div>
+                <div className="text-2xl font-bold">{completedItems.length}</div>
                 <div className="text-xs text-muted-foreground">Courses Completed</div>
               </div>
             </div>
@@ -87,7 +160,7 @@ export function UserDashboard() {
             <div className="flex items-center gap-2">
               <Calendar className="h-5 w-5 text-green-500" />
               <div>
-                <div className="text-2xl font-bold">{plannedCourses.length}</div>
+                <div className="text-2xl font-bold">{plannedItems.length}</div>
                 <div className="text-xs text-muted-foreground">Courses Planned</div>
               </div>
             </div>
@@ -99,19 +172,24 @@ export function UserDashboard() {
             <div className="flex items-center gap-2">
               <Star className="h-5 w-5 text-yellow-400" />
               <div>
-                <div className="text-2xl font-bold">{totalCreditsCompleted}</div>
-                <div className="text-xs text-muted-foreground">Total Credits</div>
+                <div className="text-2xl font-bold">{unitsCompleted}</div>
+                <div className="text-xs text-muted-foreground">Total Units</div>
               </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Average grade — shown only if any completed items have a grade recorded */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-purple-500" />
               <div>
-                <div className="text-2xl font-bold">{averageGrade.toFixed(0)}%</div>
+                <div className="text-2xl font-bold">
+                  {completedItems.filter(pi => pi.grade).length > 0
+                    ? "–" // placeholder until grade data flows through the API
+                    : "–"}
+                </div>
                 <div className="text-xs text-muted-foreground">Average Grade</div>
               </div>
             </div>
@@ -119,7 +197,9 @@ export function UserDashboard() {
         </Card>
       </div>
 
-      {/* Progress */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Degree progress                                                       */}
+      {/* ------------------------------------------------------------------ */}
       <Card>
         <CardHeader>
           <CardTitle>Degree Progress</CardTitle>
@@ -128,30 +208,33 @@ export function UserDashboard() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span>Credits Completed</span>
-              <span className="font-medium">{totalCreditsCompleted} / 120</span>
+              <span>Units Completed</span>
+              <span className="font-medium">{unitsCompleted} / {UNITS_TO_GRADUATE}</span>
             </div>
-            <Progress value={(totalCreditsCompleted / 120) * 100} />
+            {/* Progress bar width driven by real completed unit count */}
+            <Progress value={progressPercent} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
             <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <div className="text-2xl font-bold">{totalCreditsCompleted}</div>
+              <div className="text-2xl font-bold">{unitsCompleted}</div>
               <div className="text-sm text-muted-foreground">Completed</div>
             </div>
             <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <div className="text-2xl font-bold">{totalCreditsPlanned}</div>
+              <div className="text-2xl font-bold">{unitsPlanned}</div>
               <div className="text-sm text-muted-foreground">Planned</div>
             </div>
             <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <div className="text-2xl font-bold">{120 - totalCreditsCompleted}</div>
+              <div className="text-2xl font-bold">{unitsRemaining}</div>
               <div className="text-sm text-muted-foreground">Remaining</div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Completed Courses */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Completed courses                                                     */}
+      {/* ------------------------------------------------------------------ */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -166,34 +249,43 @@ export function UserDashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {completedCourses.map(course => course && (
-              <Link key={course.id} to={`/courses/${course.id}`}>
-                <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-semibold">{course.code}</h3>
-                      <Badge variant="secondary">{course.credits} credits</Badge>
-                      <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
-                        Completed
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">{course.title}</p>
-                  </div>
-                  <RatingDisplay rating={course.averageRating} size="sm" />
-                </div>
-              </Link>
-            ))}
-
-            {completedCourses.length === 0 && (
+            {completedItems.length === 0 ? (
               <p className="text-center text-muted-foreground py-4">
                 No completed courses yet. Start planning your academic journey!
               </p>
+            ) : (
+              completedItems.map(item => (
+                <Link
+                  key={item.plan_item_id}
+                  to={`/courses/${item.subject}/${item.course_number}`}
+                >
+                  <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <h3 className="font-semibold">
+                          {item.subject} {item.course_number}
+                        </h3>
+                        <Badge variant="secondary">{UNITS_PER_COURSE} units</Badge>
+                        <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                          Completed
+                        </Badge>
+                        {/* Show grade if available */}
+                        {item.grade && (
+                          <Badge variant="outline">{item.grade}</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Planned Courses */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Planned courses                                                       */}
+      {/* ------------------------------------------------------------------ */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -208,26 +300,38 @@ export function UserDashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {plannedCourses.map(({ course, term, year, courseId }) => course && (
-              <Link key={courseId} to={`/courses/${course.id}`}>
-                <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-semibold">{course.code}</h3>
-                      <Badge variant="secondary">{course.credits} credits</Badge>
-                      <Badge variant="outline">{term} {year}</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">{course.title}</p>
-                  </div>
-                  <RatingDisplay rating={course.averageRating} size="sm" />
-                </div>
-              </Link>
-            ))}
-
-            {plannedCourses.length === 0 && (
+            {plannedItems.length === 0 ? (
               <p className="text-center text-muted-foreground py-4">
                 No courses planned yet. Visit the degree planner to get started!
               </p>
+            ) : (
+              plannedItems.map(item => (
+                <Link
+                  key={item.plan_item_id}
+                  to={`/courses/${item.subject}/${item.course_number}`}
+                >
+                  <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <h3 className="font-semibold">
+                          {item.subject} {item.course_number}
+                        </h3>
+                        <Badge variant="secondary">{UNITS_PER_COURSE} units</Badge>
+                        {/* Show which term this course is planned for */}
+                        <Badge variant="outline">
+                          {item.season} {new Date().getFullYear() + item.year_index - 1}
+                        </Badge>
+                        <Badge variant="outline">{item.status}</Badge>
+                      </div>
+                      {item.note && (
+                        <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
+                          {item.note}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))
             )}
           </div>
         </CardContent>
