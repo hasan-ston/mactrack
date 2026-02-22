@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"mactrack/pkg"
@@ -21,9 +22,27 @@ func main() {
 	}
 	defer repo.Close()
 
+	// Service
+	svc := &pkg.Service{Repo: repo}
+
 	// Routes
 	http.HandleFunc("/api/courses", pkg.CoursesHandler(repo))
 	http.HandleFunc("/api/courses/", pkg.CourseHandler(repo))
+	http.HandleFunc("/api/programs", pkg.ProgramsHandler(repo))
+	http.HandleFunc("/api/programs/", pkg.ProgramRequirementsHandler(repo))
+	http.HandleFunc("/api/users/", func(w http.ResponseWriter, r *http.Request) {
+		// dispatch plan endpoints under /api/users/:id/plan
+		if strings.HasSuffix(r.URL.Path, "/plan") {
+			if r.Method == http.MethodGet {
+				pkg.GetUserPlanHandler(repo, svc)(w, r)
+				return
+			} else if r.Method == http.MethodPost {
+				pkg.PostUserPlanHandler(repo)(w, r)
+				return
+			}
+		}
+		http.NotFound(w, r)
+	})
 
 	addr := ":8080"
 	if a := os.Getenv("PORT"); a != "" {
