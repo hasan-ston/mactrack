@@ -11,7 +11,8 @@ import { CourseCard } from "../components/CourseCard";
 
 export function CourseBrowser() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFaculty, setSelectedFaculty] = useState<string>("all");
+  // selectedLevel holds "1000", "2000", "3000", "4000", or "all"
+  const [selectedLevel, setSelectedLevel] = useState<string>("all");
   const [selectedTerm, setSelectedTerm] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("code");
   const [minRating, setMinRating] = useState<number[]>([0]);
@@ -43,8 +44,8 @@ export function CourseBrowser() {
           classAverage: 0,
         }));
         setCourses(mapped);
-        // Clear faculty filter when a new search runs so DB results aren't hidden
-        setSelectedFaculty("all");
+        // Reset level filter when a new search runs so results aren't hidden
+        setSelectedLevel("all");
       })
       .catch((err) => {
         console.error("Failed to fetch courses:", err);
@@ -53,10 +54,13 @@ export function CourseBrowser() {
       });
   }, [searchQuery]);
 
-  // Extract unique faculties from current course list
-  const faculties = useMemo(() => {
-    const uniqueFaculties = Array.from(new Set(courses.map(c => c.faculty)));
-    return uniqueFaculties.sort();
+  // Derive which levels actually exist in the current result set
+  // e.g. if search returns no 4000-level courses, don't show that option
+  const availableLevels = useMemo(() => {
+    const levels = ["1", "2", "3", "4"];
+    return levels.filter(level =>
+      courses.some(c => c.code.split(" ")[1]?.startsWith(level[0]))
+    );
   }, [courses]);
 
   // Filter and sort courses client-side after API fetch
@@ -67,11 +71,15 @@ export function CourseBrowser() {
         course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         course.description.toLowerCase().includes(searchQuery.toLowerCase());
 
-      const matchesFaculty = selectedFaculty === "all" || course.faculty === selectedFaculty;
+      // Level filter: check if course_number starts with the level's first digit
+      // e.g. "2000" level matches course codes like "2C03", "2AA3", "2EE3"
+      const courseNumber = course.code.split(" ")[1] || "";
+      const matchesLevel = selectedLevel === "all" || courseNumber.startsWith(selectedLevel[0]);
+
       const matchesTerm = selectedTerm === "all" || course.term.includes(selectedTerm);
       const matchesRating = course.averageRating >= minRating[0];
 
-      return matchesSearch && matchesFaculty && matchesTerm && matchesRating;
+      return matchesSearch && matchesLevel && matchesTerm && matchesRating;
     });
 
     filtered.sort((a, b) => {
@@ -90,7 +98,7 @@ export function CourseBrowser() {
     });
 
     return filtered;
-  }, [courses, searchQuery, selectedFaculty, selectedTerm, sortBy, minRating]);
+  }, [courses, searchQuery, selectedLevel, selectedTerm, sortBy, minRating]);
 
   return (
     <div className="space-y-6">
@@ -142,15 +150,15 @@ export function CourseBrowser() {
               </SheetHeader>
               <div className="space-y-6 mt-6">
                 <div className="space-y-2">
-                  <Label>Faculty</Label>
-                  <Select value={selectedFaculty} onValueChange={setSelectedFaculty}>
+                  <Label>Level</Label>
+                  <Select value={selectedLevel} onValueChange={setSelectedLevel}>
                     <SelectTrigger>
-                      <SelectValue placeholder="All Faculties" />
+                      <SelectValue placeholder="All Levels" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Faculties</SelectItem>
-                      {faculties.map(faculty => (
-                        <SelectItem key={faculty} value={faculty}>{faculty}</SelectItem>
+                      <SelectItem value="all">All Levels</SelectItem>
+                      {availableLevels.map(level => (
+                        <SelectItem key={level} value={level}>{level}-level</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -191,15 +199,15 @@ export function CourseBrowser() {
       {/* Desktop Filters */}
       <div className="hidden md:flex gap-4 p-4 bg-muted/50 rounded-lg">
         <div className="flex-1">
-          <Label className="text-sm mb-2 block">Faculty</Label>
-          <Select value={selectedFaculty} onValueChange={setSelectedFaculty}>
+          <Label className="text-sm mb-2 block">Level</Label>
+          <Select value={selectedLevel} onValueChange={setSelectedLevel}>
             <SelectTrigger>
-              <SelectValue placeholder="All Faculties" />
+              <SelectValue placeholder="All Levels" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Faculties</SelectItem>
-              {faculties.map(faculty => (
-                <SelectItem key={faculty} value={faculty}>{faculty}</SelectItem>
+              <SelectItem value="all">All Levels</SelectItem>
+              {availableLevels.map(level => (
+                <SelectItem key={level} value={level}>{level}-level</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -241,13 +249,13 @@ export function CourseBrowser() {
           <p className="text-sm text-muted-foreground">
             Showing {filteredCourses.length} of {courses.length} courses
           </p>
-          {(searchQuery || selectedFaculty !== "all" || selectedTerm !== "all" || minRating[0] > 0) && (
+          {(searchQuery || selectedLevel !== "all" || selectedTerm !== "all" || minRating[0] > 0) && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
                 setSearchQuery("");
-                setSelectedFaculty("all");
+                setSelectedLevel("all");
                 setSelectedTerm("all");
                 setMinRating([0]);
               }}
