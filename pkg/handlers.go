@@ -7,51 +7,72 @@ import (
 	"strings"
 )
 
-// CoursesHandler serves GET /api/courses?q=search
-func CoursesHandler(repo *Repository) http.HandlerFunc {
+// PostUserPlanHandler serves POST /api/users/{id}/plan
+// Accepts year_index + season instead of plan_term_id — the handler
+// resolves or creates the plan_terms row internally so the frontend
+// doesn't need to know about it.
+func PostUserPlanHandler(repo *Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		q := strings.TrimSpace(r.URL.Query().Get("q"))
-		var courses []Course
-		var err error
-		if q == "" {
-			// empty query — return first N rows
-			courses, err = repo.SearchCourses("")
-		} else {
-			courses, err = repo.SearchCourses(q)
-		}
-		if err != nil {
-			http.Error(w, "failed to query courses", http.StatusInternalServerError)
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(courses)
-	}
-}
 
-// CourseHandler serves GET /api/courses/{id}
-func CourseHandler(repo *Repository) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// path is expected like /api/courses/123
-		idStr := strings.TrimPrefix(r.URL.Path, "/api/courses/")
-		if idStr == "" {
-			http.Error(w, "missing id", http.StatusBadRequest)
+		// Extract user ID from path: /api/users/{id}/plan
+		idStr := strings.TrimPrefix(r.URL.Path, "/api/users/")
+		idStr = strings.TrimSuffix(idStr, "/plan")
+		userID, err := strconv.Atoi(strings.Trim(idStr, "/"))
+		if err != nil || userID == 0 {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
 			return
 		}
-		id, err := strconv.Atoi(idStr)
+
+		// Decode request body
+		var body struct {
+			Subject      string `json:"subject"`
+			CourseNumber string `json:"course_number"`
+			YearIndex    int    `json:"year_index"`
+			Season       string `json:"season"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		// Resolve or create the plan_terms row for this user/year/season
+		var planTermID int
+		err = repo.DB.QueryRow(`
+			SELECT plan_term_id FROM plan_terms
+			WHERE user_id = ? AND year_index = ? AND season = ?`,
+			userID, body.YearIndex, body.Season,
+		).Scan(&planTermID)
+
 		if err != nil {
-			http.Error(w, "invalid id", http.StatusBadRequest)
-			return
+			// Row doesn't exist yet — create it
+			res, err := repo.DB.Exec(`
+				INSERT INTO plan_terms (user_id, year_index, season)
+				VALUES (?, ?, ?)`,
+				userID, body.YearIndex, body.Season,
+			)
+			if err != nil {
+				http.Error(w, "failed to create plan term", http.StatusInternalServerError)
+				return
+			}
+			id, _ := res.LastInsertId()
+			planTermID = int(id)
 		}
-		c, err := repo.GetCourseByID(id)
+
+		// Insert the plan item under the resolved term
+		_, err = repo.DB.Exec(`
+			INSERT INTO plan_items (plan_term_id, subject, course_number, status)
+			VALUES (?, ?, ?, 'planned')`,
+			planTermID, body.Subject, body.CourseNumber,
+		)
 		if err != nil {
-			http.Error(w, "failed to fetch course", http.StatusInternalServerError)
+			http.Error(w, "failed to insert plan item", http.StatusInternalServerError)
 			return
 		}
-		if c == nil {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(c)
+
+		w.WriteHeader(http.StatusCreated)
 	}
 }
