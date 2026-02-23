@@ -370,3 +370,75 @@ func GetUserPlanHandler(repo *Repository, svc *Service) http.HandlerFunc {
 		json.NewEncoder(w).Encode(items)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// CourseRequisitesHandler — GET /api/courses/{subject}/{number}/requisites
+// Returns prereqs, coreqs, and antireqs for a course grouped by kind.
+// e.g. /api/courses/COMPSCI/2ME3/requisites
+// ---------------------------------------------------------------------------
+func CourseRequisitesHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Path: /api/courses/<subject>/<number>/requisites
+		// Strip prefix and suffix to isolate "<subject>/<number>"
+		path := strings.TrimPrefix(r.URL.Path, "/api/courses/")
+		path = strings.TrimSuffix(path, "/requisites")
+
+		// Split into exactly two segments: subject + course_number
+		parts := strings.SplitN(path, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			http.Error(w, "expected /api/courses/<subject>/<number>/requisites", http.StatusBadRequest)
+			return
+		}
+
+		subject := parts[0]      // e.g. "COMPSCI"
+		courseNumber := parts[1] // e.g. "2ME3"
+
+		rows, err := repo.DB.Query(`
+			SELECT req_subject, req_course_number, kind
+			FROM requisites
+			WHERE subject = ? AND course_number = ?
+			ORDER BY kind, req_subject, req_course_number
+		`, subject, courseNumber)
+		if err != nil {
+			http.Error(w, "failed to fetch requisites", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		// Collect rows — avoid nil slices so JSON encodes as [] not null
+		reqs := []RequisiteRow{}
+		for rows.Next() {
+			var req RequisiteRow
+			if err := rows.Scan(&req.ReqSubject, &req.ReqCourseNumber, &req.Kind); err != nil {
+				http.Error(w, "failed to scan requisite", http.StatusInternalServerError)
+				return
+			}
+			reqs = append(reqs, req)
+		}
+		if err := rows.Err(); err != nil {
+			http.Error(w, "error reading requisites", http.StatusInternalServerError)
+			return
+		}
+
+		// Group by kind so frontend gets { PREREQ: [...], COREQ: [...], ANTIREQ: [...] }
+		grouped := map[string][]RequisiteRow{
+			"PREREQ":  {},
+			"COREQ":   {},
+			"ANTIREQ": {},
+		}
+		for _, req := range reqs {
+			// Guard against unexpected kind values from the DB
+			if _, ok := grouped[req.Kind]; ok {
+				grouped[req.Kind] = append(grouped[req.Kind], req)
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(grouped)
+	}
+}

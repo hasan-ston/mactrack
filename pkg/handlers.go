@@ -12,15 +12,13 @@ import (
 // resolves or creates the plan_terms row internally so the frontend
 // doesn't need to know about it.
 func PostUserPlanHandler(repo *Repository) http.HandlerFunc {
-	type payload struct {
-		YearIndex    int    `json:"year_index"`
-		Season       string `json:"season"`
-		Subject      string `json:"subject"`
-		CourseNumber string `json:"course_number"`
-		Status       string `json:"status"`
-	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Parse user ID from path /api/users/{id}/plan
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Extract user ID from path: /api/users/{id}/plan
 		idStr := strings.TrimPrefix(r.URL.Path, "/api/users/")
 		idStr = strings.TrimSuffix(idStr, "/plan")
 		userID, err := strconv.Atoi(strings.Trim(idStr, "/"))
@@ -29,47 +27,46 @@ func PostUserPlanHandler(repo *Repository) http.HandlerFunc {
 			return
 		}
 
-		var p payload
-		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-			http.Error(w, "invalid body", http.StatusBadRequest)
+		// Decode request body
+		var body struct {
+			Subject      string `json:"subject"`
+			CourseNumber string `json:"course_number"`
+			YearIndex    int    `json:"year_index"`
+			Season       string `json:"season"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		// Validate required fields
-		if p.YearIndex == 0 || p.Season == "" || p.Subject == "" || p.CourseNumber == "" || p.Status == "" {
-			http.Error(w, "missing fields", http.StatusBadRequest)
-			return
-		}
-
-		// Step 1: find or create the plan_terms row for this user/year/season.
-		// INSERT OR IGNORE means it's a no-op if the row already exists.
-		_, err = repo.DB.Exec(`
-            INSERT OR IGNORE INTO plan_terms (user_id, year_index, season)
-            VALUES (?, ?, ?)`,
-			userID, p.YearIndex, p.Season,
-		)
-		if err != nil {
-			http.Error(w, "failed to create plan term", http.StatusInternalServerError)
-			return
-		}
-
-		// Step 2: fetch the plan_term_id (whether just created or pre-existing)
+		// Resolve or create the plan_terms row for this user/year/season
 		var planTermID int
 		err = repo.DB.QueryRow(`
-            SELECT plan_term_id FROM plan_terms
-            WHERE user_id = ? AND year_index = ? AND season = ?`,
-			userID, p.YearIndex, p.Season,
+			SELECT plan_term_id FROM plan_terms
+			WHERE user_id = ? AND year_index = ? AND season = ?`,
+			userID, body.YearIndex, body.Season,
 		).Scan(&planTermID)
+
 		if err != nil {
-			http.Error(w, "failed to fetch plan term", http.StatusInternalServerError)
-			return
+			// Row doesn't exist yet — create it
+			res, err := repo.DB.Exec(`
+				INSERT INTO plan_terms (user_id, year_index, season)
+				VALUES (?, ?, ?)`,
+				userID, body.YearIndex, body.Season,
+			)
+			if err != nil {
+				http.Error(w, "failed to create plan term", http.StatusInternalServerError)
+				return
+			}
+			id, _ := res.LastInsertId()
+			planTermID = int(id)
 		}
 
-		// Step 3: insert the plan item linked to that term
+		// Insert the plan item under the resolved term
 		_, err = repo.DB.Exec(`
-            INSERT OR IGNORE INTO plan_items (plan_term_id, subject, course_number, status, grade, note)
-            VALUES (?, ?, ?, ?, NULL, NULL)`,
-			planTermID, p.Subject, p.CourseNumber, p.Status,
+			INSERT INTO plan_items (plan_term_id, subject, course_number, status)
+			VALUES (?, ?, ?, 'planned')`,
+			planTermID, body.Subject, body.CourseNumber,
 		)
 		if err != nil {
 			http.Error(w, "failed to insert plan item", http.StatusInternalServerError)
