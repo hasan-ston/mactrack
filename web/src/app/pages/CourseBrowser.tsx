@@ -18,7 +18,7 @@ export function CourseBrowser() {
   const [courses, setCourses] = useState<MockCourse[]>(mockCourses);
 
   useEffect(() => {
-    // fetch from backend API; map DB courses to mock shape with sensible defaults
+    // Fetch from backend API; map DB courses to mock shape with sensible defaults
     const q = encodeURIComponent(searchQuery);
     fetch(`/api/courses?q=${q}`)
       .then((res) => {
@@ -53,20 +53,20 @@ export function CourseBrowser() {
       });
   }, [searchQuery]);
 
-  // Extract unique faculties
+  // Extract unique faculties from current course list
   const faculties = useMemo(() => {
     const uniqueFaculties = Array.from(new Set(courses.map(c => c.faculty)));
     return uniqueFaculties.sort();
   }, [courses]);
 
-  // Filter and sort courses
+  // Filter and sort courses client-side after API fetch
   const filteredCourses = useMemo(() => {
     let filtered = courses.filter(course => {
-      const matchesSearch = searchQuery === "" || 
+      const matchesSearch = searchQuery === "" ||
         course.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
         course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         course.description.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       const matchesFaculty = selectedFaculty === "all" || course.faculty === selectedFaculty;
       const matchesTerm = selectedTerm === "all" || course.term.includes(selectedTerm);
       const matchesRating = course.averageRating >= minRating[0];
@@ -74,7 +74,6 @@ export function CourseBrowser() {
       return matchesSearch && matchesFaculty && matchesTerm && matchesRating;
     });
 
-    // Sort
     filtered.sort((a, b) => {
       switch (sortBy) {
         case "code":
@@ -139,9 +138,7 @@ export function CourseBrowser() {
             <SheetContent>
               <SheetHeader>
                 <SheetTitle>Filters</SheetTitle>
-                <SheetDescription>
-                  Refine your course search
-                </SheetDescription>
+                <SheetDescription>Refine your course search</SheetDescription>
               </SheetHeader>
               <div className="space-y-6 mt-6">
                 <div className="space-y-2">
@@ -238,7 +235,7 @@ export function CourseBrowser() {
         </div>
       </div>
 
-      {/* Results */}
+      {/* Results count + clear filters */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
