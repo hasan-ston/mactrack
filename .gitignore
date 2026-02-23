@@ -30,3 +30,4 @@ Thumbs.db
 # Misc
 web/package-lock.json
 database/courses.db
+codex.md
