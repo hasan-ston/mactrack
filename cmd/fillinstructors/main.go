@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"os"
 	"regexp"
 	"strings"
 
@@ -18,10 +17,7 @@ type courseRow struct {
 }
 
 func main() {
-	dbPath := os.Getenv("MACTRACK_DB")
-	if dbPath == "" {
-		dbPath = "database/courses.db"
-	}
+	dbPath := "../../database/courses.db"
 
 	// Open the SQLite database
 	db, err := sql.Open("sqlite3", dbPath)

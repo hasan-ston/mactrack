@@ -55,30 +55,15 @@ func main() {
 		log.Printf("[%d/%d] poid=%d  %s", i+1, len(programs), prog.poid, prog.name)
 
 		// Skip if already scraped (allows re-running without duplication).
-		// Check requirement_groups too — a program row alone means a previous run
-		// inserted the program but failed to parse groups, and we should re-process it.
-		var programExists int
-		var groupExists int
-		err := db.QueryRow("SELECT COUNT(*) FROM programs WHERE poid = ?", prog.poid).Scan(&programExists)
+		var exists int
+		err := db.QueryRow("SELECT COUNT(*) FROM programs WHERE poid = ?", prog.poid).Scan(&exists)
 		if err != nil {
 			log.Printf("  check exists: %v — skipping", err)
 			continue
 		}
-		if programExists > 0 {
-			err = db.QueryRow(`
-				SELECT COUNT(*) FROM requirement_groups 
-				WHERE program_id = (SELECT rowid FROM programs WHERE poid = ?)
-			`, prog.poid).Scan(&groupExists)
-			if err != nil {
-				log.Printf("  check groups: %v — skipping", err)
-				continue
-			}
-			if groupExists > 0 {
-				log.Printf("  already scraped, skipping")
-				continue
-			}
-			// Program row exists but no groups — fall through and re-scrape groups
-			log.Printf("  program row exists but no groups — re-scraping")
+		if exists > 0 {
+			log.Printf("  already scraped, skipping")
+			continue
 		}
 
 		programID, groups, courses, err := scrapeProgram(prog)
@@ -202,22 +187,13 @@ func scrapeProgram(prog programEntry) (programRow, []groupRow, []courseRow, erro
 	var courses []courseRow
 	tempIDCounter := 0
 
-	// McMaster's structure: all .acalog-core divs are siblings inside
-	// .custom_leftpad_20 — find the one whose heading contains "requirements",
-	// then iterate its following siblings as the actual requirement groups.
 	doc.Find(".acalog-core").Each(func(_ int, s *goquery.Selection) {
-		// Get the heading text — nested inside <h2><a>...</a>text</h2>
-		headingText := strings.TrimSpace(s.Find("h2, h3, h4, h5").First().Text())
-		if !strings.Contains(strings.ToLower(headingText), "requirement") {
+		heading := strings.TrimSpace(s.Children().First().Text())
+		if !strings.EqualFold(heading, "requirements") {
 			return
 		}
-
-		// The sibling acalog-core divs that follow are the actual requirement groups
-		siblingOrder := 0
-		s.NextAll().Filter(".acalog-core").Each(func(_ int, sibling *goquery.Selection) {
-			siblingOrder++
-			parseGroupNode(sibling, nil, &groups, &courses, &tempIDCounter, siblingOrder)
-		})
+		// Found the Requirements block — parse it recursively.
+		parseGroupNode(s, nil, &groups, &courses, &tempIDCounter, 0)
 	})
 
 	return pr, groups, courses, nil
@@ -374,24 +350,16 @@ func insertProgram(db *sql.DB, pr programRow, groups []groupRow, courses []cours
 	}
 	defer tx.Rollback() // no-op if Commit succeeds
 
-	// Insert the program row (or ignore if it already exists from a previous partial run).
+	// Insert the program row.
 	res, err := tx.Exec(
-		`INSERT OR IGNORE INTO programs (poid, name, degree_type, total_units, catalog_year)
+		`INSERT INTO programs (poid, name, degree_type, total_units, catalog_year)
 		 VALUES (?, ?, ?, ?, ?)`,
 		pr.poid, pr.name, pr.degreeType, pr.totalUnits, pr.catalogYear,
 	)
 	if err != nil {
 		return fmt.Errorf("insert program poid=%d: %w", pr.poid, err)
 	}
-
-	// If the row was ignored (already existed), fetch the existing rowid.
 	programID, _ := res.LastInsertId()
-	if programID == 0 {
-		err = tx.QueryRow("SELECT rowid FROM programs WHERE poid = ?", pr.poid).Scan(&programID)
-		if err != nil {
-			return fmt.Errorf("fetch existing program rowid: %w", err)
-		}
-	}
 
 	// Insert groups in order, resolving tempID → real DB ID.
 	// We process groups in slice order, which is pre-order (parent before children)
@@ -525,6 +493,8 @@ func parseCourseAriaLabel(label string) (code, name string) {
 	}
 	return strings.TrimSpace(m[1]), strings.TrimSpace(m[2])
 }
+
+var rePoid = regexp.MustCompile(`[?&]poid=(\d+)`)
 
 // extractQueryParam pulls an integer param from a URL fragment like "preview_program.php?catoid=58&poid=29661".
 func extractQueryParam(href, param string) int {
