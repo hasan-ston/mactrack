@@ -32,7 +32,7 @@ interface RequisitesResponse {
 }
 
 export function CourseDetail() {
-  const { courseId } = useParams();
+  const { courseId, subject, courseNumber } = useParams();
 
   // Real course data from the API
   const [course, setCourse] = useState<ApiCourse | null>(null);
@@ -46,25 +46,38 @@ export function CourseDetail() {
   const [isAdded, setIsAdded] = useState(false);
 
   // Step 1: fetch the course by its numeric DB id
-  useEffect(() => {
-    if (!courseId) return;
+ useEffect(() => {
+  setCourseLoading(true);
 
-    setCourseLoading(true);
-    fetch(`/api/courses/${courseId}`)
-      .then(res => {
-        if (res.status === 404) {
-          setCourseNotFound(true);
-          return null;
-        }
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        return res.json();
-      })
-      .then((data: ApiCourse | null) => {
-        if (data) setCourse(data);
-      })
-      .catch(err => console.error("Failed to fetch course:", err))
-      .finally(() => setCourseLoading(false));
-  }, [courseId]);
+  // Support two URL shapes:
+  // /courses/:id          (from CourseBrowser)
+  // /courses/:subject/:courseNumber  (from DegreePlanner)
+  const url = courseId
+    ? `/api/courses/${courseId}`
+    : `/api/courses/${subject}/${courseNumber}`;
+
+  fetch(url)
+    .then(res => {
+      if (res.status === 404) { setCourseNotFound(true); return null; }
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      return res.json();
+    })
+    .then((data: ApiCourse | ApiCourse[] | null) => {
+      if (!data) return;
+      // /api/courses?q= returns an array — take the exact match
+      if (Array.isArray(data)) {
+        const match = data.find(
+          c => c.subject === subject && c.course_number === courseNumber
+        );
+        if (match) setCourse(match);
+        else setCourseNotFound(true);
+      } else {
+        setCourse(data);
+      }
+    })
+    .catch(err => console.error("Failed to fetch course:", err))
+    .finally(() => setCourseLoading(false));
+}, [courseId, subject, courseNumber]);
 
   // Step 2: once we have subject + course_number, fetch requisites
   useEffect(() => {

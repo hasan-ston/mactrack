@@ -28,6 +28,7 @@ interface APIPlanItem {
   plan_term_id: number;
   subject: string;
   course_number: string;
+  course_name: string | null; 
   status: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "DROPPED";
   grade: string | null;
   note: string | null;
