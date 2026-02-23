@@ -27,11 +27,21 @@ func main() {
 
 	// Routes
 	http.HandleFunc("/api/courses", pkg.CoursesHandler(repo))
-	http.HandleFunc("/api/courses/", pkg.CourseHandler(repo))
+	http.HandleFunc("/api/courses/", func(w http.ResponseWriter, r *http.Request) {
+		// Dispatch requisites: GET /api/courses/<subject>/<number>/requisites
+		// e.g. /api/courses/COMPSCI/2ME3/requisites
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/requisites") {
+			pkg.CourseRequisitesHandler(repo)(w, r)
+			return
+		}
+
+		// Fallback: GET /api/courses/:id — original single-course handler
+		pkg.CourseHandler(repo)(w, r)
+	})
 	http.HandleFunc("/api/programs", pkg.ProgramsHandler(repo))
 	http.HandleFunc("/api/programs/", pkg.ProgramRequirementsHandler(repo))
 	http.HandleFunc("/api/users/", func(w http.ResponseWriter, r *http.Request) {
-		// dispatch plan endpoints under /api/users/:id/plan
+		// Dispatch plan endpoints under /api/users/:id/plan
 		if strings.HasSuffix(r.URL.Path, "/plan") {
 			if r.Method == http.MethodGet {
 				pkg.GetUserPlanHandler(repo, svc)(w, r)

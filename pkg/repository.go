@@ -8,6 +8,40 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// RequisiteRow holds a single row from the requisites table.
+// kind will be one of: PREREQ, COREQ, ANTIREQ
+type RequisiteRow struct {
+	ReqSubject      string `json:"req_subject"`
+	ReqCourseNumber string `json:"req_course_number"`
+	Kind            string `json:"kind"`
+}
+
+// GetRequisites returns all requisite rows for a given course (subject + course_number).
+// Returns an empty slice (not nil) if there are no requisites, so the JSON encodes as [].
+func (r *Repository) GetRequisites(subject, courseNumber string) ([]RequisiteRow, error) {
+	rows, err := r.DB.Query(`
+		SELECT req_subject, req_course_number, kind
+		FROM requisites
+		WHERE subject = ? AND course_number = ?
+		ORDER BY kind, req_subject, req_course_number
+	`, subject, courseNumber)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Collect into slice so we return [] not null in JSON if empty
+	reqs := []RequisiteRow{}
+	for rows.Next() {
+		var row RequisiteRow
+		if err := rows.Scan(&row.ReqSubject, &row.ReqCourseNumber, &row.Kind); err != nil {
+			return nil, err
+		}
+		reqs = append(reqs, row)
+	}
+	return reqs, rows.Err()
+}
+
 type Repository struct {
 	DB *sql.DB
 }
