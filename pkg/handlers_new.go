@@ -12,6 +12,38 @@ import (
 // CoursesHandler — GET /api/courses?q=
 // Returns all courses, or filters by q if provided (max 200 results).
 // ---------------------------------------------------------------------------
+
+// CourseBySubjectNumberHandler serves GET /api/courses/:subject/:number
+func CourseBySubjectNumberHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/courses/"), "/")
+		subject := strings.ToUpper(parts[0])
+		number := parts[1]
+
+		var course struct {
+			ID           int    `json:"id"`
+			Subject      string `json:"subject"`
+			CourseNumber string `json:"course_number"`
+			CourseName   string `json:"course_name"`
+			Professor    string `json:"professor"`
+			Term         string `json:"term"`
+		}
+		err := repo.DB.QueryRow(`
+            SELECT id, subject, course_number, course_name, professor, term
+            FROM courses WHERE subject = ? AND course_number = ?
+            LIMIT 1`, subject, number).Scan(
+			&course.ID, &course.Subject, &course.CourseNumber,
+			&course.CourseName, &course.Professor, &course.Term,
+		)
+		if err != nil {
+			http.Error(w, "course not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(course)
+	}
+}
+
 func CoursesHandler(repo *Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

@@ -19,7 +19,7 @@ const (
 	catoid  = "58"
 	dbPath  = "database/courses.db"
 	// Conservative delay — the calendar server is slow and we don't want to get blocked
-	requestDelay = 400 * time.Millisecond
+	requestDelay = 100 * time.Millisecond
 )
 
 // reCoid extracts the numeric coid from a preview_course.php URL

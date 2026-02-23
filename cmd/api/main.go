@@ -34,6 +34,11 @@ func main() {
 			pkg.CourseRequisitesHandler(repo)(w, r)
 			return
 		}
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/courses/"), "/")
+		if r.Method == http.MethodGet && len(parts) == 2 && parts[1] != "" {
+			pkg.CourseBySubjectNumberHandler(repo)(w, r)
+			return
+		}
 
 		// Fallback: GET /api/courses/:id — original single-course handler
 		pkg.CourseHandler(repo)(w, r)

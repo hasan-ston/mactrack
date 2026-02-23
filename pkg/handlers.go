@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,6 +40,9 @@ func PostUserPlanHandler(repo *Repository) http.HandlerFunc {
 			return
 		}
 
+		log.Printf("received: userID=%d yearIndex=%d season=%s subject=%s courseNumber=%s",
+			userID, body.YearIndex, body.Season, body.Subject, body.CourseNumber)
+
 		// Resolve or create the plan_terms row for this user/year/season
 		var planTermID int
 		err = repo.DB.QueryRow(`
@@ -55,6 +59,7 @@ func PostUserPlanHandler(repo *Repository) http.HandlerFunc {
 				userID, body.YearIndex, body.Season,
 			)
 			if err != nil {
+				log.Printf("failed to create plan term: %v", err)
 				http.Error(w, "failed to create plan term", http.StatusInternalServerError)
 				return
 			}
@@ -65,10 +70,11 @@ func PostUserPlanHandler(repo *Repository) http.HandlerFunc {
 		// Insert the plan item under the resolved term
 		_, err = repo.DB.Exec(`
 			INSERT INTO plan_items (plan_term_id, subject, course_number, status)
-			VALUES (?, ?, ?, 'planned')`,
+			VALUES (?, ?, ?, 'PLANNED')`,
 			planTermID, body.Subject, body.CourseNumber,
 		)
 		if err != nil {
+			log.Printf("failed to insert plan item: %v", err)
 			http.Error(w, "failed to insert plan item", http.StatusInternalServerError)
 			return
 		}
