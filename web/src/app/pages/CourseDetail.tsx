@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router";
+import { useParams, Link, useNavigate } from "react-router";
 import { ArrowLeft, BookOpen, Users, Star, TrendingUp, Clock } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -44,6 +44,7 @@ export function CourseDetail() {
   const [requisitesLoading, setRequisitesLoading] = useState(false);
 
   const [isAdded, setIsAdded] = useState(false);
+  const navigate = useNavigate();
 
   // Step 1: fetch the course by its numeric DB id
  useEffect(() => {
@@ -176,12 +177,22 @@ export function CourseDetail() {
           </div>
 
           <div className="flex gap-2">
-            <Button
-              onClick={() => setIsAdded(!isAdded)}
-              variant={isAdded ? "secondary" : "default"}
-            >
-              {isAdded ? "Added to Planner" : "Add to Planner"}
-            </Button>
+            {isAdded ? (
+              <Button asChild variant="secondary">
+                <Link to="/planner">Added to Planner</Link>
+              </Button>
+            ) : (
+              <Button
+                onClick={() => {
+                  // TODO: call backend to persist planned course
+                  setIsAdded(true);
+                  navigate("/planner");
+                }}
+                variant="default"
+              >
+                Add to Planner
+              </Button>
+            )}
           </div>
         </div>
 

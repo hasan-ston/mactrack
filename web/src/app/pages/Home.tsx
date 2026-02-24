@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Search, BookOpen, GraduationCap, Star, TrendingUp } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -9,6 +9,7 @@ import { CourseCard } from "../components/CourseCard";
 
 export function Home() {
   const [searchQuery, setSearchQuery] = useState("");
+  const navigate = useNavigate();
 
   const featuredCourses = courses.slice(0, 3);
   const popularCourses = courses.slice(3, 6);
@@ -16,7 +17,7 @@ export function Home() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      window.location.href = `/courses?search=${encodeURIComponent(searchQuery)}`;
+      navigate(`/courses?search=${encodeURIComponent(searchQuery)}`);
     }
   };
 
