@@ -12,6 +12,12 @@
 1. Use the migrations in the `migrations/` folder to set up your database schema.
 2. Example (SQLite):
 	- sqlite3 database/courses.db < migrations/001_seed_data.sql
+	- sqlite3 database/courses.db < migrations/002_schema_extend.sql
+	- sqlite3 database/courses.db < migrations/003_test_queries.sql
+	- sqlite3 database/courses.db < migrations/004_degree_planner.sql
+	- sqlite3 database/courses.db < migrations/005_add_coid_to_courses.sql
+	- sqlite3 database/courses.db < migrations/006_requisites_seed.sql
+	- sqlite3 database/courses.db < migrations/007_backfill_coids.sql
 
 ## Frontend (React + Vite)
 1. Install Node.js (18+ recommended).

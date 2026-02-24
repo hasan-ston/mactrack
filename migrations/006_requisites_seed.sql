@@ -1,15 +1,8 @@
 PRAGMA foreign_keys=OFF;
 BEGIN TRANSACTION;
-CREATE TABLE requisites (
-  req_id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  subject           TEXT NOT NULL,
-  course_number     TEXT NOT NULL,
-  req_subject       TEXT NOT NULL,
-  req_course_number TEXT NOT NULL,
-  kind              TEXT NOT NULL CHECK (kind IN ('PREREQ','COREQ','ANTIREQ')),
-  note              TEXT,
-  CHECK(subject <> req_subject OR course_number <> req_course_number)
-);
+-- Table `requisites` is defined in `002_schema_extend.sql`.
+-- This file only seeds rows; explicit `req_id` values are removed at runtime
+-- so AUTOINCREMENT assigns IDs.
 INSERT INTO requisites VALUES(1,'COMPSCI','2C03','COMPSCI','1XC3','PREREQ','Must have C- or better');
 INSERT INTO requisites VALUES(2,'ANTHROP','2AR3','ANTHROP','1AA3','PREREQ','');
 INSERT INTO requisites VALUES(3,'KINESIOL','1YY3','KINESIOL','1Y03','PREREQ','');

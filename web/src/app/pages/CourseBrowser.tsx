@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useLocation } from "react-router";
 import { Search, Filter, SlidersHorizontal } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
@@ -11,6 +12,19 @@ import { CourseCard } from "../components/CourseCard";
 
 export function CourseBrowser() {
   const [searchQuery, setSearchQuery] = useState("");
+  const location = useLocation();
+
+  // Initialize search query from URL `?search=` param so direct links and
+  // client-side navigation from Home pick it up immediately.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search || "");
+      const q = params.get("search") || "";
+      setSearchQuery(q);
+    } catch (e) {
+      // ignore malformed URLSearchParams
+    }
+  }, [location.search]);
   // selectedLevel holds "1000", "2000", "3000", "4000", or "all"
   const [selectedLevel, setSelectedLevel] = useState<string>("all");
   const [selectedTerm, setSelectedTerm] = useState<string>("all");

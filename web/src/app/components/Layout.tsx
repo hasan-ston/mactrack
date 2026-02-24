@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation } from "react-router";
 import { BookOpen, Users, LayoutDashboard, Calendar, LogIn, User } from "lucide-react";
+import DarkModeToggle from "./DarkModeToggle";
 import { Button } from "./ui/button";
 
 export function Layout() {
@@ -57,6 +58,7 @@ export function Layout() {
           <div className="flex items-center space-x-4">
             {!isAuthPage && (
               <>
+                <DarkModeToggle />
                 <Button asChild variant="ghost" size="sm" className="text-white hover:text-[#ffc845] hover:bg-white/10">
                   <Link to="/login">
                     <LogIn className="h-4 w-4 mr-2" />
