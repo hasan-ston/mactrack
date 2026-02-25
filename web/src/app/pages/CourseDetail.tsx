@@ -31,6 +31,22 @@ interface RequisitesResponse {
   ANTIREQ: RequisiteRow[];
 }
 
+// Cleans up the professor field from the courses table.
+// The DB stores multiple professors delimited by \u000a (newline),
+// and sometimes duplicates the same name — this handles both cases.
+const formatProfessors = (professorString: string | null | undefined): string => {
+  if (!professorString) return "—";
+
+  return [
+    ...new Set(                          // Remove duplicate names
+      professorString
+        .split(/,?\\u000a|,/)                // courses.professor uses \u000a as delimiter
+        .map((name) => name.trim())      // Clean surrounding whitespace
+        .filter((name) => name !== "")   // Drop empty segments
+    ),
+  ].join(", ");
+};
+
 export function CourseDetail() {
   const { courseId, subject, courseNumber } = useParams();
 
@@ -47,38 +63,38 @@ export function CourseDetail() {
   const navigate = useNavigate();
 
   // Step 1: fetch the course by its numeric DB id
- useEffect(() => {
-  setCourseLoading(true);
+  useEffect(() => {
+    setCourseLoading(true);
 
-  // Support two URL shapes:
-  // /courses/:id          (from CourseBrowser)
-  // /courses/:subject/:courseNumber  (from DegreePlanner)
-  const url = courseId
-    ? `/api/courses/${courseId}`
-    : `/api/courses/${subject}/${courseNumber}`;
+    // Support two URL shapes:
+    // /courses/:id                     (from CourseBrowser)
+    // /courses/:subject/:courseNumber  (from DegreePlanner)
+    const url = courseId
+      ? `/api/courses/${courseId}`
+      : `/api/courses/${subject}/${courseNumber}`;
 
-  fetch(url)
-    .then(res => {
-      if (res.status === 404) { setCourseNotFound(true); return null; }
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      return res.json();
-    })
-    .then((data: ApiCourse | ApiCourse[] | null) => {
-      if (!data) return;
-      // /api/courses?q= returns an array — take the exact match
-      if (Array.isArray(data)) {
-        const match = data.find(
-          c => c.subject === subject && c.course_number === courseNumber
-        );
-        if (match) setCourse(match);
-        else setCourseNotFound(true);
-      } else {
-        setCourse(data);
-      }
-    })
-    .catch(err => console.error("Failed to fetch course:", err))
-    .finally(() => setCourseLoading(false));
-}, [courseId, subject, courseNumber]);
+    fetch(url)
+      .then(res => {
+        if (res.status === 404) { setCourseNotFound(true); return null; }
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        return res.json();
+      })
+      .then((data: ApiCourse | ApiCourse[] | null) => {
+        if (!data) return;
+        // /api/courses?q= returns an array — take the exact match
+        if (Array.isArray(data)) {
+          const match = data.find(
+            c => c.subject === subject && c.course_number === courseNumber
+          );
+          if (match) setCourse(match);
+          else setCourseNotFound(true);
+        } else {
+          setCourse(data);
+        }
+      })
+      .catch(err => console.error("Failed to fetch course:", err))
+      .finally(() => setCourseLoading(false));
+  }, [courseId, subject, courseNumber]);
 
   // Step 2: once we have subject + course_number, fetch requisites
   useEffect(() => {
@@ -153,6 +169,9 @@ export function CourseDetail() {
     { stars: 2, count: 0, percentage: 0 },
     { stars: 1, count: 0, percentage: 0 },
   ];
+
+  // Pre-format professors once so all three render sites stay in sync
+  const formattedProfessors = formatProfessors(course.professor);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -319,7 +338,8 @@ export function CourseDetail() {
               <Separator />
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Professor:</span>
-                <span className="font-medium">{course.professor || "—"}</span>
+                {/* formatProfessors deduplicates and joins \u000a-delimited names */}
+                <span className="font-medium">{formattedProfessors}</span>
               </div>
               <Separator />
               <div className="flex justify-between">
@@ -370,7 +390,8 @@ export function CourseDetail() {
                     <Users className="h-8 w-8 text-muted-foreground" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold">{course.professor}</h3>
+                    {/* Use the formatted string so the Professors tab matches the Overview tab */}
+                    <h3 className="text-lg font-semibold">{formattedProfessors}</h3>
                     <p className="text-sm text-muted-foreground">{course.subject}</p>
                   </div>
                 </div>
