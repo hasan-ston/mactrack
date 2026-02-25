@@ -6,8 +6,8 @@ import { CourseDetail } from "./pages/CourseDetail";
 import { ProfessorProfile } from "./pages/ProfessorProfile";
 import { UserDashboard } from "./pages/UserDashboard";
 import { DegreePlanner } from "./pages/DegreePlanner";
-import { Login } from "./pages/Login";
-import { Signup } from "./pages/Signup";
+import Login from "./pages/Login";
+import { Register } from "./pages/Register";
 import { NotFound } from "./pages/NotFound";
 
 export const router = createBrowserRouter([
@@ -23,7 +23,7 @@ export const router = createBrowserRouter([
       { path: "dashboard", Component: UserDashboard },
       { path: "planner", Component: DegreePlanner },
       { path: "login", Component: Login },
-      { path: "signup", Component: Signup },
+      { path: "signup", Component: Register },
       { path: "*", Component: NotFound },
     ],
   },

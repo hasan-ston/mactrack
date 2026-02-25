@@ -25,7 +25,30 @@ func main() {
 	// Service
 	svc := &pkg.Service{Repo: repo}
 
-	// Routes
+	// --- Auth routes (public — no JWT required) ---
+	http.HandleFunc("/api/auth/register", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		pkg.RegisterHandler(repo)(w, r)
+	})
+	http.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		pkg.LoginHandler(repo)(w, r)
+	})
+	http.HandleFunc("/api/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		pkg.RefreshHandler()(w, r)
+	})
+
+	// --- Course routes (public) ---
 	http.HandleFunc("/api/courses", pkg.CoursesHandler(repo))
 	http.HandleFunc("/api/courses/", func(w http.ResponseWriter, r *http.Request) {
 		// Dispatch requisites: GET /api/courses/<subject>/<number>/requisites
@@ -34,6 +57,7 @@ func main() {
 			pkg.CourseRequisitesHandler(repo)(w, r)
 			return
 		}
+
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/courses/"), "/")
 		if r.Method == http.MethodGet && len(parts) == 2 && parts[1] != "" {
 			pkg.CourseBySubjectNumberHandler(repo)(w, r)
@@ -43,19 +67,33 @@ func main() {
 		// Fallback: GET /api/courses/:id — original single-course handler
 		pkg.CourseHandler(repo)(w, r)
 	})
+
+	// --- Program routes (public) ---
 	http.HandleFunc("/api/programs", pkg.ProgramsHandler(repo))
 	http.HandleFunc("/api/programs/", pkg.ProgramRequirementsHandler(repo))
+
+	// --- User/plan routes (protected — JWT required) ---
 	http.HandleFunc("/api/users/", func(w http.ResponseWriter, r *http.Request) {
 		// Dispatch plan endpoints under /api/users/:id/plan
 		if strings.HasSuffix(r.URL.Path, "/plan") {
-			if r.Method == http.MethodGet {
-				pkg.GetUserPlanHandler(repo, svc)(w, r)
-				return
-			} else if r.Method == http.MethodPost {
-				pkg.PostUserPlanHandler(repo)(w, r)
-				return
+			switch r.Method {
+			case http.MethodGet:
+				// RequireAuth wraps the handler — rejects requests with missing/invalid token
+				pkg.RequireAuth(pkg.GetUserPlanHandler(repo, svc))(w, r)
+			case http.MethodPost:
+				pkg.RequireAuth(pkg.PostUserPlanHandler(repo))(w, r)
+			default:
+				http.NotFound(w, r)
 			}
+			return
 		}
+
+		// DELETE /api/users/:id/plan/:itemId — remove a plan item (TODO from handoff notes)
+		if r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "/plan/") {
+			pkg.RequireAuth(pkg.DeleteUserPlanItemHandler(repo))(w, r)
+			return
+		}
+
 		http.NotFound(w, r)
 	})
 
