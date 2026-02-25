@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http/httptest"
 	"strconv"
@@ -75,7 +76,145 @@ func TestCourseHandlers_GettersAndPlan(t *testing.T) {
 	})
 }
 
+func TestCoursesHandler(t *testing.T) {
+	repo := newTestRepo(t)
+	defer repo.Close()
+
+	// use ZZTEST to avoid colliding with real seed data in migration 001
+	_, err := repo.DB.Exec(`INSERT INTO courses(subject, course_number, course_name, professor, term) VALUES ('ZZTEST', '100X', 'Test Course', 'Dr X', '2025')`)
+	if err != nil {
+		t.Fatalf("seed course: %v", err)
+	}
+
+	handler := CoursesHandler(repo)
+
+	t.Run("no query returns courses", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/courses", nil)
+		handler.ServeHTTP(rr, req)
+		if rr.Code != 200 {
+			t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+		var courses []Course
+		if err := json.NewDecoder(rr.Body).Decode(&courses); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(courses) == 0 {
+			t.Fatalf("expected courses, got 0")
+		}
+	})
+
+	t.Run("query filters by subject", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/courses?q=ZZTEST", nil)
+		handler.ServeHTTP(rr, req)
+		if rr.Code != 200 {
+			t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+		var courses []Course
+		if err := json.NewDecoder(rr.Body).Decode(&courses); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(courses) != 1 {
+			t.Fatalf("expected 1 course, got %d", len(courses))
+		}
+		if courses[0].Subject != "ZZTEST" {
+			t.Fatalf("unexpected subject: %s", courses[0].Subject)
+		}
+	})
+
+	t.Run("query with no matches returns empty array", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/courses?q=ZZZZZZ", nil)
+		handler.ServeHTTP(rr, req)
+		if rr.Code != 200 {
+			t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+		var courses []Course
+		if err := json.NewDecoder(rr.Body).Decode(&courses); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(courses) != 0 {
+			t.Fatalf("expected 0 courses, got %d", len(courses))
+		}
+	})
+
+	t.Run("POST returns 405", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/courses", nil)
+		handler.ServeHTTP(rr, req)
+		if rr.Code != 405 {
+			t.Fatalf("expected 405, got %d", rr.Code)
+		}
+	})
+}
+
+func TestPostUserPlanHandler(t *testing.T) {
+	repo := newTestRepo(t)
+	defer repo.Close()
+
+	res, err := repo.DB.Exec(`INSERT INTO users(email, display_name, password_hash) VALUES ('plan@example.com', 'Plan User', 'x')`)
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	userID, _ := res.LastInsertId()
+
+	handler := PostUserPlanHandler(repo)
+
+	t.Run("adds a course to plan", func(t *testing.T) {
+		body, _ := json.Marshal(map[string]any{
+			"subject":       "COMPSCI",
+			"course_number": "2C03",
+			"year_index":    1,
+			"season":        "Fall",
+		})
+		req := httptest.NewRequest("POST", "/api/users/1/plan", bytes.NewReader(body))
+		req.URL.Path = "/api/users/" + strconv.FormatInt(userID, 10) + "/plan"
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != 201 {
+			t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+		}
+	})
+
+	t.Run("year_index=0 regression", func(t *testing.T) {
+		body, _ := json.Marshal(map[string]any{
+			"subject":       "MATH",
+			"course_number": "1A03",
+			"year_index":    0,
+			"season":        "Fall",
+		})
+		req := httptest.NewRequest("POST", "/api/users/1/plan", bytes.NewReader(body))
+		req.URL.Path = "/api/users/" + strconv.FormatInt(userID, 10) + "/plan"
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != 500 {
+			t.Fatalf("expected 500 for year_index=0, got %d", rr.Code)
+		}
+	})
+
+	t.Run("adding different course to same term reuses plan term", func(t *testing.T) {
+		courses := []string{"3SH3", "2ME3"}
+
+		for i, num := range courses {
+			body, _ := json.Marshal(map[string]any{
+				"subject":       "COMPSCI",
+				"course_number": num,
+				"year_index":    2,
+				"season":        "Winter",
+			})
+			req := httptest.NewRequest("POST", "/api/users/1/plan", bytes.NewReader(body))
+			req.URL.Path = "/api/users/" + strconv.FormatInt(userID, 10) + "/plan"
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+			if rr.Code != 201 {
+				t.Fatalf("attempt %d: expected 201, got %d: %s", i+1, rr.Code, rr.Body.String())
+			}
+		}
+	})
+}
+
 func TestDeletePlanItem_TDD(t *testing.T) {
-	// placeholder until DELETE handler is implemented
-	t.Skip("implement DELETE /api/users/:id/plan/:id first")
+	// placeholder until DELETE /api/users/:id/plan/:id is implemented
+	t.Skip("implement DELETE handler then enable this test")
 }

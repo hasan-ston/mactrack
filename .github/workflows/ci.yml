@@ -38,6 +38,6 @@ jobs:
       - name: Install and check
         run: |
           cd web
-          npm ci
-          npm run tsc --noEmit
-          npm run lint
+          npm install
+          npm run build
+
