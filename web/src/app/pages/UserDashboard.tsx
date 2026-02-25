@@ -5,8 +5,8 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
-import { RatingDisplay } from "../components/RatingDisplay";
-
+import { useAuth } from "../contexts/AuthContext";
+import { authFetch } from "../lib/api";
 
 interface APIPlanItem {
   plan_item_id: number;
@@ -21,13 +21,6 @@ interface APIPlanItem {
   season: string;
 }
 
-// Hardcoded until auth is wired up — replace with real user context
-const MOCK_USER_ID = 1;
-const MOCK_USER_NAME = "John Doe";
-const MOCK_USER_EMAIL = "john.doe@mcmaster.ca";
-const MOCK_USER_PROGRAM = "Computer Science";
-const MOCK_USER_YEAR = 2;
-
 // Total units to graduate — replace with program-specific value once
 // the degree planner validation API is wired up
 const UNITS_TO_GRADUATE = 120;
@@ -41,13 +34,17 @@ const UNITS_PER_COURSE = 3;
 // ---------------------------------------------------------------------------
 
 export function UserDashboard() {
+  // Real logged-in user from JWT auth context
+  const { user } = useAuth();
+
   const [planItems, setPlanItems] = useState<APIPlanItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch the user's full plan on mount
+  // Fetch the user's full plan on mount (or when user changes after login)
   useEffect(() => {
-    fetch(`/api/users/${MOCK_USER_ID}/plan`)
+    if (!user) return; // don't fetch if not logged in
+    authFetch(`/api/users/${user.userID}/plan`)
       .then(res => {
         if (!res.ok) throw new Error(`Server returned ${res.status}`);
         return res.json();
@@ -58,7 +55,7 @@ export function UserDashboard() {
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [user]); // re-run if the logged-in user changes
 
   // ---------------------------------------------------------------------------
   // Derived stats from real plan data
@@ -102,7 +99,7 @@ export function UserDashboard() {
         <div>
           <h1 className="text-3xl font-bold">My Dashboard</h1>
           <p className="text-muted-foreground mt-1">
-            Welcome back, {MOCK_USER_NAME}
+            Welcome back, {user?.displayName}
           </p>
         </div>
         <Button asChild>
@@ -125,13 +122,18 @@ export function UserDashboard() {
 
             <div className="flex-1 space-y-3">
               <div>
-                <h2 className="text-2xl font-bold">{MOCK_USER_NAME}</h2>
-                <p className="text-muted-foreground">{MOCK_USER_EMAIL}</p>
+                <h2 className="text-2xl font-bold">{user?.displayName}</h2>
+                {/* Show program + year if available, otherwise fall back to email */}
+                <p className="text-muted-foreground">
+                  {user?.program || user?.yearOfStudy
+                    ? [user?.program, user?.yearOfStudy ? `Year ${user.yearOfStudy}` : null]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : user?.email}
+                </p>
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">{MOCK_USER_PROGRAM}</Badge>
-                <Badge variant="outline">Year {MOCK_USER_YEAR}</Badge>
                 <Badge variant="outline">{unitsCompleted} Units Completed</Badge>
               </div>
             </div>
@@ -179,17 +181,13 @@ export function UserDashboard() {
           </CardContent>
         </Card>
 
-        {/* Average grade — shown only if any completed items have a grade recorded */}
+        {/* Average grade — placeholder until grade data flows through the API */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-purple-500" />
               <div>
-                <div className="text-2xl font-bold">
-                  {completedItems.filter(pi => pi.grade).length > 0
-                    ? "–" // placeholder until grade data flows through the API
-                    : "–"}
-                </div>
+                <div className="text-2xl font-bold">–</div>
                 <div className="text-xs text-muted-foreground">Average Grade</div>
               </div>
             </div>
@@ -269,7 +267,6 @@ export function UserDashboard() {
                         <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
                           Completed
                         </Badge>
-                        {/* Show grade if available */}
                         {item.grade && (
                           <Badge variant="outline">{item.grade}</Badge>
                         )}

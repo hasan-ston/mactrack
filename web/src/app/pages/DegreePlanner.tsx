@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { RatingDisplay } from "../components/RatingDisplay";
+import { useAuth } from "../contexts/AuthContext";
+import { authFetch } from "../lib/api";
 
 // ---------------------------------------------------------------------------
 // Types — mirroring what the Go API actually returns
@@ -28,7 +30,7 @@ interface APIPlanItem {
   plan_term_id: number;
   subject: string;
   course_number: string;
-  course_name: string | null; 
+  course_name: string | null;
   status: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "DROPPED";
   grade: string | null;
   note: string | null;
@@ -44,9 +46,6 @@ interface APIPlanItem {
 const TERMS = ["Fall", "Winter", "Spring/Summer"] as const;
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR + i);
-
-// Hardcoded for now — replace with real user ID from auth context when ready
-const MOCK_USER_ID = 1;
 
 // Total units required for graduation — replace with program-specific value
 // once the degree planner validation API is wired up
@@ -71,6 +70,9 @@ function planItemKey(item: APIPlanItem): string {
 // ---------------------------------------------------------------------------
 
 export function DegreePlanner() {
+  // ---- Auth — provides the real logged-in user's ID ----
+  const { user } = useAuth();
+
   // ---- Course search state (dialog) ----
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<APICourse[]>([]);
@@ -91,11 +93,12 @@ export function DegreePlanner() {
   const [mutating, setMutating] = useState(false);
 
   // --------------------------------------------------------------------------
-  // Fetch the user's plan on mount
+  // Fetch the user's plan on mount (or when user changes after login)
   // --------------------------------------------------------------------------
   useEffect(() => {
+    if (!user) return; // don't fetch if not logged in
     setPlanLoading(true);
-    fetch(`/api/users/${MOCK_USER_ID}/plan`)
+    authFetch(`/api/users/${user.userID}/plan`)
       .then(res => {
         if (!res.ok) throw new Error(`Server returned ${res.status}`);
         return res.json();
@@ -106,10 +109,11 @@ export function DegreePlanner() {
       })
       .catch(err => setPlanError(err.message))
       .finally(() => setPlanLoading(false));
-  }, []);
+  }, [user]); // re-run if the logged-in user changes
 
   // --------------------------------------------------------------------------
   // Search courses — debounced against /api/courses?q=
+  // Course search is public so we use plain fetch here
   // --------------------------------------------------------------------------
   const searchCourses = useCallback((q: string) => {
     setSearchLoading(true);
@@ -144,7 +148,7 @@ export function DegreePlanner() {
   // Add a course to the plan
   // --------------------------------------------------------------------------
   const handleAddCourse = async () => {
-    if (!selectedCourse) return;
+    if (!selectedCourse || !user) return;
     setMutating(true);
 
     // Map the display year + term into what the API expects
@@ -155,9 +159,9 @@ export function DegreePlanner() {
     const season = selectedTerm === "Spring/Summer" ? "Spring" : selectedTerm;
 
     try {
-      const res = await fetch(`/api/users/${MOCK_USER_ID}/plan`, {
+      const res = await authFetch(`/api/users/${user.userID}/plan`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        // authFetch already sets Content-Type: application/json
         body: JSON.stringify({
           subject: selectedCourse.subject,
           course_number: selectedCourse.course_number,
@@ -170,7 +174,7 @@ export function DegreePlanner() {
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
 
       // Re-fetch the plan to get the server-assigned IDs
-      const updated = await fetch(`/api/users/${MOCK_USER_ID}/plan`).then(r => r.json());
+      const updated = await authFetch(`/api/users/${user.userID}/plan`).then(r => r.json());
       setPlanItems(updated ?? []);
 
       // Reset dialog state
@@ -188,9 +192,10 @@ export function DegreePlanner() {
   // Remove a course from the plan
   // --------------------------------------------------------------------------
   const handleRemoveCourse = async (item: APIPlanItem) => {
+    if (!user) return;
     setMutating(true);
     try {
-      await fetch(`/api/users/${MOCK_USER_ID}/plan/${item.plan_item_id}`, {
+      await authFetch(`/api/users/${user.userID}/plan/${item.plan_item_id}`, {
         method: "DELETE",
       });
       // Optimistic update — remove locally without re-fetching
@@ -454,7 +459,6 @@ export function DegreePlanner() {
                                       {item.subject} {item.course_number}
                                     </div>
                                   </Link>
-                                  {/* course_name in scope here — item defined by termCourses.map */}
                                   {item.course_name && (
                                     <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
                                       {item.course_name}

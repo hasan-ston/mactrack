@@ -330,3 +330,100 @@ func (r *Repository) GetProgramRequirements(programID int) (*Program, error) {
 
 	return &p, nil
 }
+
+// User is the model returned from user-related queries.
+// Note: PasswordHash is intentionally excluded from API responses — only used internally.
+type User struct {
+	UserID       int     `json:"user_id"`
+	Email        string  `json:"email"`
+	DisplayName  string  `json:"display_name"`
+	PasswordHash string  `json:"-"` // The `-` tag means this field is never serialized to JSON
+	Program      *string `json:"program,omitempty"`
+	YearOfStudy  *int    `json:"year_of_study,omitempty"`
+}
+
+// GetUserByEmail looks up a user by their email address.
+// Returns (nil, nil) if no user found — not an error, just not found.
+func (r *Repository) GetUserByEmail(email string) (*User, error) {
+	row := r.DB.QueryRow(
+		`SELECT user_id, email, display_name, password_hash, program, year_of_study
+		 FROM users WHERE email = ?`, email,
+	)
+	var u User
+	var program sql.NullString
+	var year sql.NullInt64
+	if err := row.Scan(&u.UserID, &u.Email, &u.DisplayName, &u.PasswordHash, &program, &year); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if program.Valid {
+		u.Program = &program.String
+	}
+	if year.Valid {
+		v := int(year.Int64)
+		u.YearOfStudy = &v
+	}
+	return &u, nil
+}
+
+// CreateUser inserts a new user row and returns the created user.
+// passwordHash should already be a bcrypt hash — never pass a plaintext password here.
+func (r *Repository) CreateUser(email, displayName, passwordHash string, program *string, yearOfStudy *int) (*User, error) {
+	// Build args for insert — allow NULL for optional columns
+	var y interface{}
+	if yearOfStudy != nil {
+		y = *yearOfStudy
+	} else {
+		y = nil
+	}
+	result, err := r.DB.Exec(
+		`INSERT INTO users (email, display_name, password_hash, program, year_of_study) VALUES (?, ?, ?, ?, ?)`,
+		email, displayName, passwordHash, program, y,
+	)
+	if err != nil {
+		return nil, err
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	u := &User{
+		UserID:      int(id),
+		Email:       email,
+		DisplayName: displayName,
+	}
+	if program != nil {
+		u.Program = program
+	}
+	if yearOfStudy != nil {
+		u.YearOfStudy = yearOfStudy
+	}
+	return u, nil
+}
+
+// GetUserByID fetches a user by their numeric ID.
+// Used after token validation to attach full user info to a request.
+func (r *Repository) GetUserByID(id int) (*User, error) {
+	row := r.DB.QueryRow(
+		`SELECT user_id, email, display_name, program, year_of_study FROM users WHERE user_id = ?`, id,
+	)
+	var u User
+	var program sql.NullString
+	var year sql.NullInt64
+	if err := row.Scan(&u.UserID, &u.Email, &u.DisplayName, &program, &year); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if program.Valid {
+		u.Program = &program.String
+	}
+	if year.Valid {
+		v := int(year.Int64)
+		u.YearOfStudy = &v
+	}
+	return &u, nil
+}

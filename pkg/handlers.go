@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -80,5 +81,65 @@ func PostUserPlanHandler(repo *Repository) http.HandlerFunc {
 		}
 
 		w.WriteHeader(http.StatusCreated)
+	}
+}
+
+// DeleteUserPlanItemHandler serves DELETE /api/users/{id}/plan/{itemId}
+// It verifies that the plan item belongs to the requested user and deletes it.
+func DeleteUserPlanItemHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Expect path: /api/users/{id}/plan/{itemId}
+		path := strings.TrimPrefix(r.URL.Path, "/api/users/")
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		// parts should be: ["{id}", "plan", "{itemId}"]
+		if len(parts) != 3 || parts[1] != "plan" {
+			http.Error(w, "invalid path", http.StatusBadRequest)
+			return
+		}
+
+		userID, err := strconv.Atoi(parts[0])
+		if err != nil || userID == 0 {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+		itemID, err := strconv.Atoi(parts[2])
+		if err != nil || itemID == 0 {
+			http.Error(w, "invalid item id", http.StatusBadRequest)
+			return
+		}
+
+		// Ensure the plan_item belongs to this user by joining plan_items -> plan_terms
+		var ownerID int
+		err = repo.DB.QueryRow(`
+			SELECT pt.user_id FROM plan_items pi
+			JOIN plan_terms pt ON pi.plan_term_id = pt.plan_term_id
+			WHERE pi.plan_item_id = ?
+		`, itemID).Scan(&ownerID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, "failed to verify ownership", http.StatusInternalServerError)
+			return
+		}
+
+		if ownerID != userID {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+
+		// Delete the plan item
+		if _, err := repo.DB.Exec(`DELETE FROM plan_items WHERE plan_item_id = ?`, itemID); err != nil {
+			http.Error(w, "failed to delete plan item", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
