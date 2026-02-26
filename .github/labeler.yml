@@ -1,0 +1,16 @@
+# .github/labeler.yml
+
+backend:
+  - 'cmd/**/*'
+  - 'pkg/**/*'
+  - 'go.mod'
+  - 'go.sum'
+
+database:
+  - 'migrations/**/*'
+
+frontend:
+  - 'web/**/*'
+
+documentation:
+  - 'README.md'
