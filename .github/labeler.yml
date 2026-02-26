@@ -1,26 +1,17 @@
-# Label PRs that touch Go backend code
+# .github/labeler.yml
+# NOTE: Indentation is critical here — each level must be exactly 2 spaces
+
 backend:
-  - changed-files:
-    - any-glob-to-any-file:
-      - 'cmd/**/*'       # CLI / entrypoint code
-      - 'pkg/**/*'       # Shared packages
-      - 'go.mod'         # Go module definition
-      - 'go.sum'         # Go module checksums
+  - 'cmd/**/*'
+  - 'pkg/**/*'
+  - 'go.mod'
+  - 'go.sum'
 
-# Label PRs that touch database migrations
 database:
-  - changed-files:
-    - any-glob-to-any-file:
-      - 'migrations/**/*'
+  - 'migrations/**/*'
 
-# Label PRs that touch the frontend
 frontend:
-  - changed-files:
-    - any-glob-to-any-file:
-      - 'web/**/*'
+  - 'web/**/*'
 
-# Label PRs that update documentation
 documentation:
-  - changed-files:
-    - any-glob-to-any-file:
-      - 'README.md'
+  - 'README.md'
