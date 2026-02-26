@@ -24,11 +24,13 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	UserID       int    `json:"user_id"`
-	Email        string `json:"email"`
-	DisplayName  string `json:"display_name"`
+	AccessToken  string  `json:"access_token"`
+	RefreshToken string  `json:"refresh_token"`
+	UserID       int     `json:"user_id"`
+	Email        string  `json:"email"`
+	DisplayName  string  `json:"display_name"`
+	Program      *string `json:"program"`
+	YearOfStudy  *int    `json:"year_of_study"`
 }
 
 type RefreshRequest struct {
@@ -97,6 +99,8 @@ func RegisterHandler(repo *Repository) http.HandlerFunc {
 			UserID:       user.UserID,
 			Email:        user.Email,
 			DisplayName:  user.DisplayName,
+			Program:      user.Program,
+			YearOfStudy:  user.YearOfStudy,
 		})
 	}
 }
@@ -144,6 +148,8 @@ func LoginHandler(repo *Repository) http.HandlerFunc {
 			UserID:       user.UserID,
 			Email:        user.Email,
 			DisplayName:  user.DisplayName,
+			Program:      user.Program,
+			YearOfStudy:  user.YearOfStudy,
 		})
 	}
 }
