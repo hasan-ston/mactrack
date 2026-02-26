@@ -9,7 +9,7 @@ interface RatingDisplayProps {
 
 export function RatingDisplay({ 
   rating, 
-  maxRating = 5, 
+  maxRating = 6, 
   size = "md",
   showNumber = true 
 }: RatingDisplayProps) {
