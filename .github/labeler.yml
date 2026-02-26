@@ -1,14 +1,26 @@
+# Label PRs that touch Go backend code
 backend:
-  - 'cmd/**/*'
-  - 'pkg/**/*'
-  - 'go.mod'
-  - 'go.sum'
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'cmd/**/*'       # CLI / entrypoint code
+      - 'pkg/**/*'       # Shared packages
+      - 'go.mod'         # Go module definition
+      - 'go.sum'         # Go module checksums
 
+# Label PRs that touch database migrations
 database:
-  - 'migrations/**/*'
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'migrations/**/*'
 
+# Label PRs that touch the frontend
 frontend:
-  - 'web/**/*'
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'web/**/*'
 
+# Label PRs that update documentation
 documentation:
-  - 'README.md'
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'README.md'

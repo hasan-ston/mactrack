@@ -1,15 +1,17 @@
+# Workflow that triggers the labeler action on pull requests
 name: "Pull Request Labeler"
+
 on:
   - pull_request_target
 
 jobs:
   label:
     permissions:
-      contents: read
-      pull-requests: write
+      contents: read         # Required to read repo contents
+      pull-requests: write   # Required to apply labels
     runs-on: ubuntu-latest
     steps:
       - uses: actions/labeler@v5
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
-          sync-labels: true
+          sync-labels: true  # Removes labels when files no longer match
