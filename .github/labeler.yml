@@ -1,5 +1,3 @@
-# .github/labeler.yml
-
 backend:
   - 'cmd/**/*'
   - 'pkg/**/*'
