@@ -1,14 +1,22 @@
 backend:
-  - 'cmd/**/*'
-  - 'pkg/**/*'
-  - 'go.mod'
-  - 'go.sum'
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'cmd/**/*'
+          - 'pkg/**/*'
+          - 'go.mod'
+          - 'go.sum'
 
 database:
-  - 'migrations/**/*'
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'migrations/**/*'
 
 frontend:
-  - 'web/**/*'
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'web/**/*'
 
 documentation:
-  - 'README.md'
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'README.md'
