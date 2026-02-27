@@ -52,12 +52,12 @@ func main() {
 	http.HandleFunc("/api/courses", pkg.CoursesHandler(repo))
 	http.HandleFunc("/api/courses/", func(w http.ResponseWriter, r *http.Request) {
 		// Dispatch requisites: GET /api/courses/<subject>/<number>/requisites
-		// e.g. /api/courses/COMPSCI/2ME3/requisites
 		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/requisites") {
 			pkg.CourseRequisitesHandler(repo)(w, r)
 			return
 		}
 
+		// Dispatch by subject+number: GET /api/courses/<subject>/<number>
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/courses/"), "/")
 		if r.Method == http.MethodGet && len(parts) == 2 && parts[1] != "" {
 			pkg.CourseBySubjectNumberHandler(repo)(w, r)
@@ -74,11 +74,17 @@ func main() {
 
 	// --- User/plan routes (protected — JWT required) ---
 	http.HandleFunc("/api/users/", func(w http.ResponseWriter, r *http.Request) {
-		// Dispatch plan endpoints under /api/users/:id/plan
+		// Validation route must be checked BEFORE the /plan suffix check,
+		// because it's a GET on a different suffix entirely.
+		if strings.HasSuffix(r.URL.Path, "/validation") {
+			pkg.RequireAuth(pkg.GetUserValidationHandler(repo, svc))(w, r)
+			return
+		}
+
+		// Plan collection: GET or POST /api/users/:id/plan
 		if strings.HasSuffix(r.URL.Path, "/plan") {
 			switch r.Method {
 			case http.MethodGet:
-				// RequireAuth wraps the handler — rejects requests with missing/invalid token
 				pkg.RequireAuth(pkg.GetUserPlanHandler(repo, svc))(w, r)
 			case http.MethodPost:
 				pkg.RequireAuth(pkg.PostUserPlanHandler(repo))(w, r)
@@ -88,7 +94,7 @@ func main() {
 			return
 		}
 
-		// DELETE /api/users/:id/plan/:itemId — remove a plan item (TODO from handoff notes)
+		// Plan item: DELETE /api/users/:id/plan/:itemId
 		if r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "/plan/") {
 			pkg.RequireAuth(pkg.DeleteUserPlanItemHandler(repo))(w, r)
 			return

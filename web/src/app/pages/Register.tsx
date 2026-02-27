@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router";
-import { UserPlus, Mail, Lock, User, GraduationCap } from "lucide-react";
+import { UserPlus, Mail, Lock, User, GraduationCap, Search, ChevronDown, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -8,18 +8,140 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card";
 import { useAuth } from "../contexts/AuthContext";
 
-const PROGRAMS = [
-  "Computer Science",
-  "Software Engineering",
-  "Electrical Engineering",
-  "Mechanical Engineering",
-  "Civil Engineering",
-  "Business Administration",
-  "Life Sciences",
-  "Health Sciences",
-  "Mathematics",
-  "Physics",
-];
+// Shape returned by GET /api/programs
+interface APIProgram {
+  program_id: number;
+  name: string;
+  degree_type: string;
+}
+
+// ---------------------------------------------------------------------------
+// Searchable program picker
+// Replaces the static PROGRAMS array with a live-filtered list from the API.
+// Uses a custom dropdown instead of shadcn Select because Select doesn't
+// support filtering 418 items interactively.
+// ---------------------------------------------------------------------------
+function ProgramPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (name: string) => void;
+}) {
+  const [programs, setPrograms] = useState<APIProgram[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Fetch all programs once on mount — public endpoint, no auth needed
+  useEffect(() => {
+    fetch("/api/programs")
+      .then(res => res.json())
+      .then((data: APIProgram[]) => {
+        // Sort alphabetically by name for easier scanning
+        setPrograms((data ?? []).sort((a, b) => a.name.localeCompare(b.name)));
+      })
+      .catch(() => setPrograms([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Filter programs by search query — matches anywhere in the name
+  const filtered = query.trim() === ""
+    ? programs
+    : programs.filter(p =>
+        p.name.toLowerCase().includes(query.toLowerCase())
+      );
+
+  const handleSelect = (name: string) => {
+    onChange(name);
+    setQuery("");
+    setOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      {/* Trigger button — shows selected program or placeholder */}
+      <button
+        type="button"
+        onClick={() => setOpen(prev => !prev)}
+        className="w-full flex items-center justify-between px-3 py-2 border rounded-md bg-background text-sm hover:bg-muted/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
+      >
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <GraduationCap className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          <span className={value ? "text-foreground truncate" : "text-muted-foreground"}>
+            {value || "Select your program"}
+          </span>
+        </div>
+        <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0 ml-2" />
+      </button>
+
+      {/* Dropdown panel */}
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg">
+          {/* Search input inside the dropdown */}
+          <div className="p-2 border-b">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                autoFocus
+                type="text"
+                placeholder="Search programs..."
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                className="w-full pl-7 pr-3 py-1.5 text-sm bg-muted/50 rounded border-0 outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+
+          {/* Scrollable results list */}
+          <div className="max-h-56 overflow-y-auto">
+            {loading ? (
+              <div className="flex justify-center py-6">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : filtered.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No programs found
+              </p>
+            ) : (
+              filtered.map(p => (
+                <button
+                  key={p.program_id}
+                  type="button"
+                  onClick={() => handleSelect(p.name)}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors ${
+                    value === p.name ? "bg-primary/10 text-primary font-medium" : ""
+                  }`}
+                >
+                  <div className="truncate">{p.name}</div>
+                  {p.degree_type && (
+                    <div className="text-xs text-muted-foreground truncate">{p.degree_type}</div>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Register page
+// ---------------------------------------------------------------------------
 
 export function Register() {
   const { register } = useAuth();
@@ -111,22 +233,10 @@ export function Register() {
               </div>
             </div>
 
-            {/* Program */}
+            {/* Program — searchable picker backed by real API data */}
             <div className="space-y-2">
-              <Label htmlFor="program">Program</Label>
-              <div className="relative">
-                <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
-                <Select value={program} onValueChange={setProgram}>
-                  <SelectTrigger className="pl-10">
-                    <SelectValue placeholder="Select your program" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PROGRAMS.map(p => (
-                      <SelectItem key={p} value={p}>{p}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Label>Program</Label>
+              <ProgramPicker value={program} onChange={setProgram} />
             </div>
 
             {/* Year of study */}
