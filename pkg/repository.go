@@ -16,6 +16,120 @@ type RequisiteRow struct {
 	Kind            string `json:"kind"`
 }
 
+// GetProgramWithGroups loads a Program with its full requirement group tree
+// and courses populated. Used by the validation service.
+func (r *Repository) GetProgramWithGroups(programID int) (*Program, error) {
+    // Load the program row
+    var p Program
+    var totalUnits sql.NullInt64
+    var degreeType sql.NullString
+    err := r.DB.QueryRow(`
+        SELECT program_id, poid, name, degree_type, total_units, catalog_year
+        FROM programs WHERE program_id = ?`, programID,
+    ).Scan(&p.ProgramID, &p.POID, &p.Name, &degreeType, &totalUnits, &p.CatalogYear)
+    if err == sql.ErrNoRows {
+        return nil, nil
+    }
+    if err != nil {
+        return nil, fmt.Errorf("load program: %w", err)
+    }
+    p.DegreeType = degreeType.String
+    if totalUnits.Valid {
+        u := int(totalUnits.Int64)
+        p.TotalUnits = &u
+    }
+
+    // Load all groups for this program
+    groupRows, err := r.DB.Query(`
+        SELECT group_id, program_id, parent_group_id, display_order, heading,
+               heading_level, units_required, courses_required, is_elective, is_container
+        FROM requirement_groups
+        WHERE program_id = ?
+        ORDER BY display_order`, programID)
+    if err != nil {
+        return nil, fmt.Errorf("load groups: %w", err)
+    }
+    defer groupRows.Close()
+
+    groupMap := map[int]*RequirementGroup{}
+    childrenOf := map[int][]int{}
+    var rootIDs []int
+
+    for groupRows.Next() {
+        var g RequirementGroup
+        var parentID sql.NullInt64
+        var unitsReq, coursesReq sql.NullInt64
+        var isElective, isContainer int
+        if err := groupRows.Scan(
+            &g.GroupID, &g.ProgramID, &parentID, &g.DisplayOrder, &g.Heading,
+            &g.HeadingLevel, &unitsReq, &coursesReq, &isElective, &isContainer,
+        ); err != nil {
+            return nil, fmt.Errorf("scan group: %w", err)
+        }
+        if parentID.Valid {
+            pid := int(parentID.Int64)
+            g.ParentGroupID = &pid
+            childrenOf[pid] = append(childrenOf[pid], g.GroupID)
+        } else {
+            rootIDs = append(rootIDs, g.GroupID)
+        }
+        if unitsReq.Valid { u := int(unitsReq.Int64); g.UnitsRequired = &u }
+        if coursesReq.Valid { c := int(coursesReq.Int64); g.CoursesRequired = &c }
+        g.IsElective = isElective == 1
+        g.IsContainer = isContainer == 1
+        g.Courses = []RequirementCourse{}
+        g.Children = []RequirementGroup{}
+        groupMap[g.GroupID] = &g
+    }
+
+    // Load all courses for this program and attach to groups
+    courseRows, err := r.DB.Query(`
+        SELECT rc.req_course_id, rc.group_id, rc.display_order,
+               rc.coid, rc.course_code, rc.course_name, rc.is_or_with_next, rc.adhoc_text
+        FROM requirement_courses rc
+        JOIN requirement_groups rg ON rg.group_id = rc.group_id
+        WHERE rg.program_id = ?
+        ORDER BY rc.group_id, rc.display_order`, programID)
+    if err != nil {
+        return nil, fmt.Errorf("load courses: %w", err)
+    }
+    defer courseRows.Close()
+
+    for courseRows.Next() {
+        var rc RequirementCourse
+        var coid sql.NullInt64
+        var courseCode, courseName, adhocText sql.NullString
+        var isOrWithNext int
+        if err := courseRows.Scan(
+            &rc.ReqCourseID, &rc.GroupID, &rc.DisplayOrder,
+            &coid, &courseCode, &courseName, &isOrWithNext, &adhocText,
+        ); err != nil {
+            return nil, fmt.Errorf("scan course: %w", err)
+        }
+        if coid.Valid { c := int(coid.Int64); rc.Coid = &c }
+        rc.CourseCode = courseCode.String
+        rc.CourseName = courseName.String
+        rc.IsOrWithNext = isOrWithNext == 1
+        if adhocText.Valid { rc.AdhocText = &adhocText.String }
+        if g, ok := groupMap[rc.GroupID]; ok {
+            g.Courses = append(g.Courses, rc)
+        }
+    }
+
+    // Wire children into parents, then collect root groups
+    for parentID, childIDs := range childrenOf {
+        parent := groupMap[parentID]
+        for _, cid := range childIDs {
+            parent.Children = append(parent.Children, *groupMap[cid])
+        }
+    }
+    for _, id := range rootIDs {
+        p.Groups = append(p.Groups, *groupMap[id])
+    }
+
+    return &p, nil
+}
+
 // GetRequisites returns all requisite rows for a given course (subject + course_number).
 // Returns an empty slice (not nil) if there are no requisites, so the JSON encodes as [].
 func (r *Repository) GetRequisites(subject, courseNumber string) ([]RequisiteRow, error) {
@@ -427,3 +541,5 @@ func (r *Repository) GetUserByID(id int) (*User, error) {
 	}
 	return &u, nil
 }
+
+

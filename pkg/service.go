@@ -59,6 +59,12 @@ func (s *Service) ValidatePlan(planItems []PlanItem, program *Program) (Validati
 
 	var walkGroup func(g RequirementGroup)
 	walkGroup = func(g RequirementGroup) {
+		if g.IsContainer || (len(g.Courses) == 0 && len(g.Children) > 0) {
+			for _, child := range g.Children {
+				walkGroup(child)
+			}
+			return
+		}
 		unitsReq := 0
 		if g.UnitsRequired != nil {
 			unitsReq = *g.UnitsRequired

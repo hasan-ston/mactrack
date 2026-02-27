@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"net/http"
 
 	"github.com/PuerkitoBio/goquery" // HTML parsing
 	_ "github.com/mattn/go-sqlite3"  // SQLite driver
@@ -105,6 +106,19 @@ func scrapeIndex() ([]programEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	// DIAGNOSTIC: print raw HTML to see what we're actually getting
+	html, _ := doc.Html()
+	log.Printf("RAW HTML (first 2000 chars):\n%s", html[:min(2000, len(html))])
+
+	// DIAGNOSTIC: check what .block_content actually finds
+	doc.Find(".block_content").Each(func(i int, s *goquery.Selection) {
+		log.Printf("Found .block_content node %d: %s", i, s.AttrOr("class", "no-class"))
+	})
+
+	// DIAGNOSTIC: also try alternate selectors McMaster commonly uses
+	doc.Find(".block_content_inner").Each(func(i int, s *goquery.Selection) {
+		log.Printf("Found .block_content_inner node %d", i)
+	})
 
 	var entries []programEntry
 	var currentDegreeType string
@@ -191,7 +205,7 @@ func scrapeProgram(prog programEntry) (programRow, []groupRow, []courseRow, erro
 		catalogYear: catalogYear,
 	}
 
-	// Parse "N units total" from the program_description div, if present.
+	// Parse total units from program_description if present
 	doc.Find(".program_description p").Each(func(_ int, s *goquery.Selection) {
 		if u := parseUnitsFromText(s.Text()); u > 0 {
 			pr.totalUnits = &u
@@ -202,22 +216,11 @@ func scrapeProgram(prog programEntry) (programRow, []groupRow, []courseRow, erro
 	var courses []courseRow
 	tempIDCounter := 0
 
-	// McMaster's structure: all .acalog-core divs are siblings inside
-	// .custom_leftpad_20 — find the one whose heading contains "requirements",
-	// then iterate its following siblings as the actual requirement groups.
-	doc.Find(".acalog-core").Each(func(_ int, s *goquery.Selection) {
-		// Get the heading text — nested inside <h2><a>...</a>text</h2>
-		headingText := strings.TrimSpace(s.Find("h2, h3, h4, h5").First().Text())
-		if !strings.Contains(strings.ToLower(headingText), "requirement") {
-			return
-		}
-
-		// The sibling acalog-core divs that follow are the actual requirement groups
-		siblingOrder := 0
-		s.NextAll().Filter(".acalog-core").Each(func(_ int, sibling *goquery.Selection) {
-			siblingOrder++
-			parseGroupNode(sibling, nil, &groups, &courses, &tempIDCounter, siblingOrder)
-		})
+	// Fix: instead of finding a "requirements" header and looking at its NextAll siblings,
+	// directly select all top-level acalog-core divs inside custom_leftpad_20.
+	// This handles McMaster's nested structure correctly.
+	doc.Find(".custom_leftpad_20 > .acalog-core").Each(func(i int, s *goquery.Selection) {
+		parseGroupNode(s, nil, &groups, &courses, &tempIDCounter, i+1)
 	})
 
 	return pr, groups, courses, nil
@@ -452,12 +455,24 @@ func insertProgram(db *sql.DB, pr programRow, groups []groupRow, courses []cours
 
 // fetchDoc performs an HTTP GET and returns a parsed goquery document.
 func fetchDoc(url string) (*goquery.Document, error) {
-	// Use goquery's built-in NewDocument which calls http.Get internally.
-	doc, err := goquery.NewDocument(url)
-	if err != nil {
-		return nil, fmt.Errorf("fetch %s: %w", url, err)
-	}
-	return doc, nil
+    // 15-second timeout prevents hanging on slow/stalled McMaster responses
+    client := &http.Client{Timeout: 15 * time.Second}
+    
+    resp, err := client.Get(url)
+    if err != nil {
+        return nil, fmt.Errorf("fetch %s: %w", url, err)
+    }
+    defer resp.Body.Close()
+    
+    if resp.StatusCode != 200 {
+        return nil, fmt.Errorf("fetch %s: status %d", url, resp.StatusCode)
+    }
+    
+    doc, err := goquery.NewDocumentFromReader(resp.Body)
+    if err != nil {
+        return nil, fmt.Errorf("parse %s: %w", url, err)
+    }
+    return doc, nil
 }
 
 // headingLevel converts an HTML tag name to its numeric depth, or 0 if not a heading.

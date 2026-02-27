@@ -1,12 +1,19 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { User, BookOpen, Calendar, Star, TrendingUp, Loader2 } from "lucide-react";
+import {
+  User, BookOpen, Calendar, Star, TrendingUp, Loader2,
+  CheckCircle2, XCircle, AlertCircle, HelpCircle, ChevronDown, ChevronUp
+} from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
 import { useAuth } from "../contexts/AuthContext";
 import { authFetch } from "../lib/api";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface APIPlanItem {
   plan_item_id: number;
@@ -21,29 +28,262 @@ interface APIPlanItem {
   season: string;
 }
 
-// Total units to graduate — replace with program-specific value once
-// the degree planner validation API is wired up
-const UNITS_TO_GRADUATE = 120;
+interface APIProgram {
+  program_id: number;
+  name: string;
+  degree_type: string;
+  total_units: number | null;
+}
 
-// Each McMaster course is typically 3 units — replace once coid is
-// linked to the courses table and real unit counts are available
+// Mirrors the Go ValidationResult / GroupResult structs
+interface GroupResult {
+  heading: string;
+  satisfied: boolean;
+  units_completed: number;
+  units_required: number;
+  missing_courses: string[];
+}
+
+interface PrereqWarning {
+  course: string;
+  missing_prereq: string;
+}
+
+interface ValidationResult {
+  total_units_required: number;
+  total_units_completed: number;
+  units_remaining: number;
+  groups: GroupResult[];
+  prereq_warnings: PrereqWarning[];
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const UNITS_TO_GRADUATE = 120;
 const UNITS_PER_COURSE = 3;
 
 // ---------------------------------------------------------------------------
-// Component
+// Sub-component: DegreeValidation
+// Fetches and renders the full validation breakdown.
+// Kept separate so its loading state doesn't block the rest of the dashboard.
+// ---------------------------------------------------------------------------
+
+function DegreeValidation({ userID, programName }: { userID: number; programName: string }) {
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // Track which groups are expanded — default all collapsed
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    // Step 1: find the program_id by matching user.program name against /api/programs
+    // We do this because AuthContext only stores the program name string, not the ID.
+    authFetch("/api/programs")
+      .then(res => {
+        if (!res.ok) throw new Error(`Programs fetch returned ${res.status}`);
+        return res.json() as Promise<APIProgram[]>;
+      })
+      .then(programs => {
+        // Case-insensitive partial match in case stored name differs slightly
+        const match = programs.find(p =>
+          p.name.toLowerCase().includes(programName.toLowerCase()) ||
+          programName.toLowerCase().includes(p.name.toLowerCase())
+        );
+        if (!match) throw new Error(`No program found matching "${programName}"`);
+        return match.program_id;
+      })
+      .then(programID =>
+        // Step 2: run validation with the resolved program_id
+        authFetch(`/api/users/${userID}/validation?program_id=${programID}`)
+      )
+      .then(res => {
+        if (!res.ok) throw new Error(`Validation returned ${res.status}`);
+        return res.json() as Promise<ValidationResult>;
+      })
+      .then(data => {
+        setValidation(data);
+        setError(null);
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [userID, programName]);
+
+  const toggleGroup = (index: number) =>
+    setExpanded(prev => ({ ...prev, [index]: !prev[index] }));
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
+        <span className="text-muted-foreground text-sm">Checking your requirements…</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 text-destructive py-6 justify-center">
+        <AlertCircle className="h-5 w-5" />
+        <span className="text-sm">{error}</span>
+      </div>
+    );
+  }
+
+  if (!validation) return null;
+
+  const satisfiedCount = validation.groups.filter(g => g.satisfied).length;
+  const totalGroups = validation.groups.length;
+  const progressPercent = totalGroups > 0
+    ? Math.round((satisfiedCount / totalGroups) * 100)
+    : 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Overall progress bar */}
+      <div className="space-y-2">
+        <div className="flex justify-between text-sm">
+          <span>Requirements Satisfied</span>
+          <span className="font-medium">{satisfiedCount} / {totalGroups} groups</span>
+        </div>
+        <Progress value={progressPercent} />
+      </div>
+
+      {/* Unit summary */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="text-center p-3 bg-muted/50 rounded-lg">
+          <div className="text-xl font-bold text-green-600">{validation.total_units_completed}</div>
+          <div className="text-xs text-muted-foreground">Completed</div>
+        </div>
+        <div className="text-center p-3 bg-muted/50 rounded-lg">
+          <div className="text-xl font-bold">{validation.total_units_required}</div>
+          <div className="text-xs text-muted-foreground">Required</div>
+        </div>
+        <div className="text-center p-3 bg-muted/50 rounded-lg">
+          <div className="text-xl font-bold text-orange-500">{validation.units_remaining}</div>
+          <div className="text-xs text-muted-foreground">Remaining</div>
+        </div>
+      </div>
+
+      {/* Prereq warnings — shown prominently if any exist */}
+      {validation.prereq_warnings.length > 0 && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4 space-y-2">
+          <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400 font-medium text-sm">
+            <AlertCircle className="h-4 w-4" />
+            Prerequisite Warnings ({validation.prereq_warnings.length})
+          </div>
+          {validation.prereq_warnings.map((w, i) => (
+            <div key={i} className="text-sm text-muted-foreground ml-6">
+              <span className="font-medium text-foreground">{w.course}</span>
+              {" "}requires{" "}
+              <span className="font-medium text-foreground">{w.missing_prereq}</span>
+              {" "}which isn't completed yet
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Requirement groups — collapsible list */}
+      <div className="space-y-2">
+        {validation.groups.map((group, i) => (
+          <div
+            key={i}
+            className="border rounded-lg overflow-hidden"
+          >
+            {/* Group header — always visible, click to expand */}
+            <button
+              onClick={() => toggleGroup(i)}
+              className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors text-left"
+            >
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                {/* Satisfied / unsatisfied icon */}
+                {group.satisfied ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                ) : group.units_completed > 0 ? (
+                  <AlertCircle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+                ) : group.missing_courses.length === 0 ? (
+                  <HelpCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
+                )}
+
+                {/* Group heading */}
+                <span className="text-sm font-medium truncate">{group.heading}</span>
+              </div>
+
+              <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+                {/* Units completed / required */}
+                {group.units_required > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {group.units_completed}/{group.units_required} units
+                  </span>
+                )}
+
+                {/* Satisfied badge */}
+                <Badge
+                  variant={group.satisfied ? "default" : "outline"}
+                  className={group.satisfied
+                    ? "bg-green-500/20 text-green-700 border-green-500/30 dark:text-green-400"
+                    : group.units_completed > 0
+                      ? "bg-yellow-500/10 text-yellow-700 border-yellow-500/30 dark:text-yellow-400"
+                      : ""}
+                >
+                  {group.satisfied ? "Done" : group.units_completed > 0 ? "Partial" : "Missing"}
+                </Badge>
+
+                {/* Expand/collapse chevron — only show if there are missing courses */}
+                {group.missing_courses.length > 0 && (
+                  expanded[i]
+                    ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </div>
+            </button>
+
+            {/* Missing courses — shown when expanded */}
+            {expanded[i] && group.missing_courses.length > 0 && (
+              <div className="border-t px-4 py-3 bg-muted/20">
+                <p className="text-xs text-muted-foreground mb-2 font-medium">Still needed:</p>
+                <div className="flex flex-wrap gap-2">
+                  {group.missing_courses.map((code, j) => (
+                    <Link
+                      key={j}
+                      // Link to the course detail page using subject+number from code
+                      to={`/courses/${code.split(" ")[0]}/${code.split(" ")[1]}`}
+                    >
+                      <Badge
+                        variant="outline"
+                        className="text-xs hover:bg-primary/10 transition-colors cursor-pointer"
+                      >
+                        {code}
+                      </Badge>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Dashboard component
 // ---------------------------------------------------------------------------
 
 export function UserDashboard() {
-  // Real logged-in user from JWT auth context
   const { user } = useAuth();
 
   const [planItems, setPlanItems] = useState<APIPlanItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch the user's full plan on mount (or when user changes after login)
+  // Fetch the user's full plan on mount
   useEffect(() => {
-    if (!user) return; // don't fetch if not logged in
+    if (!user) return;
     authFetch(`/api/users/${user.userID}/plan`)
       .then(res => {
         if (!res.ok) throw new Error(`Server returned ${res.status}`);
@@ -55,14 +295,16 @@ export function UserDashboard() {
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
-  }, [user]); // re-run if the logged-in user changes
+  }, [user]);
 
   // ---------------------------------------------------------------------------
-  // Derived stats from real plan data
+  // Derived stats
   // ---------------------------------------------------------------------------
 
   const completedItems = planItems.filter(pi => pi.status === "COMPLETED");
-  const plannedItems = planItems.filter(pi => pi.status === "PLANNED" || pi.status === "IN_PROGRESS");
+  const plannedItems = planItems.filter(
+    pi => pi.status === "PLANNED" || pi.status === "IN_PROGRESS"
+  );
 
   const unitsCompleted = completedItems.length * UNITS_PER_COURSE;
   const unitsPlanned = plannedItems.length * UNITS_PER_COURSE;
@@ -123,7 +365,6 @@ export function UserDashboard() {
             <div className="flex-1 space-y-3">
               <div>
                 <h2 className="text-2xl font-bold">{user?.displayName}</h2>
-                {/* Show program + year if available, otherwise fall back to email */}
                 <p className="text-muted-foreground">
                   {user?.program || user?.yearOfStudy
                     ? [user?.program, user?.yearOfStudy ? `Year ${user.yearOfStudy}` : null]
@@ -132,7 +373,6 @@ export function UserDashboard() {
                     : user?.email}
                 </p>
               </div>
-
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline">{unitsCompleted} Units Completed</Badge>
               </div>
@@ -181,7 +421,6 @@ export function UserDashboard() {
           </CardContent>
         </Card>
 
-        {/* Average grade — placeholder until grade data flows through the API */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2">
@@ -196,7 +435,7 @@ export function UserDashboard() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Degree progress                                                       */}
+      {/* Degree Progress (simple unit counter)                                */}
       {/* ------------------------------------------------------------------ */}
       <Card>
         <CardHeader>
@@ -209,7 +448,6 @@ export function UserDashboard() {
               <span>Units Completed</span>
               <span className="font-medium">{unitsCompleted} / {UNITS_TO_GRADUATE}</span>
             </div>
-            {/* Progress bar width driven by real completed unit count */}
             <Progress value={progressPercent} />
           </div>
 
@@ -231,7 +469,31 @@ export function UserDashboard() {
       </Card>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Completed courses                                                     */}
+      {/* Requirement Validation — only shown if user has a program set       */}
+      {/* ------------------------------------------------------------------ */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Requirement Breakdown</CardTitle>
+          <CardDescription>
+            {user?.program
+              ? `Checking your completed courses against ${user.program}`
+              : "Set your program in your profile to see requirement tracking"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {user?.program ? (
+            // DegreeValidation handles its own loading/error state independently
+            <DegreeValidation userID={user.userID} programName={user.program} />
+          ) : (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              No program selected. Update your profile to enable requirement tracking.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Completed courses                                                    */}
       {/* ------------------------------------------------------------------ */}
       <Card>
         <CardHeader>
@@ -258,19 +520,17 @@ export function UserDashboard() {
                   to={`/courses/${item.subject}/${item.course_number}`}
                 >
                   <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <h3 className="font-semibold">
-                          {item.subject} {item.course_number}
-                        </h3>
-                        <Badge variant="secondary">{UNITS_PER_COURSE} units</Badge>
-                        <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
-                          Completed
-                        </Badge>
-                        {item.grade && (
-                          <Badge variant="outline">{item.grade}</Badge>
-                        )}
-                      </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <h3 className="font-semibold">
+                        {item.subject} {item.course_number}
+                      </h3>
+                      <Badge variant="secondary">{UNITS_PER_COURSE} units</Badge>
+                      <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                        Completed
+                      </Badge>
+                      {item.grade && (
+                        <Badge variant="outline">{item.grade}</Badge>
+                      )}
                     </div>
                   </div>
                 </Link>
@@ -281,7 +541,7 @@ export function UserDashboard() {
       </Card>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Planned courses                                                       */}
+      {/* Planned courses                                                      */}
       {/* ------------------------------------------------------------------ */}
       <Card>
         <CardHeader>
@@ -308,24 +568,21 @@ export function UserDashboard() {
                   to={`/courses/${item.subject}/${item.course_number}`}
                 >
                   <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <h3 className="font-semibold">
-                          {item.subject} {item.course_number}
-                        </h3>
-                        <Badge variant="secondary">{UNITS_PER_COURSE} units</Badge>
-                        {/* Show which term this course is planned for */}
-                        <Badge variant="outline">
-                          {item.season} {new Date().getFullYear() + item.year_index - 1}
-                        </Badge>
-                        <Badge variant="outline">{item.status}</Badge>
-                      </div>
-                      {item.note && (
-                        <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
-                          {item.note}
-                        </p>
-                      )}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <h3 className="font-semibold">
+                        {item.subject} {item.course_number}
+                      </h3>
+                      <Badge variant="secondary">{UNITS_PER_COURSE} units</Badge>
+                      <Badge variant="outline">
+                        {item.season} {new Date().getFullYear() + item.year_index - 1}
+                      </Badge>
+                      <Badge variant="outline">{item.status}</Badge>
                     </div>
+                    {item.note && (
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
+                        {item.note}
+                      </p>
+                    )}
                   </div>
                 </Link>
               ))

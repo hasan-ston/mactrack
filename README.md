@@ -18,6 +18,8 @@
 	- sqlite3 database/courses.db < migrations/005_add_coid_to_courses.sql
 	- sqlite3 database/courses.db < migrations/006_requisites_seed.sql
 	- sqlite3 database/courses.db < migrations/007_backfill_coids.sql
+	- sqlite3 database/courses.db < migrations/008_users_program_year.sql
+	
 
 ## Frontend (React + Vite)
 1. Install Node.js (18+ recommended).

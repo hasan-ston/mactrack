@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS programs (
 
 -- A named section in a program's requirement tree.
 -- Can be a container (e.g. "Level III: 30 Units") with child groups but no direct courses,
--- or a leaf (e.g. "27 units") that holds requirement_courses rows.
+-- ort a leaf (e.g. "27 units") that holds requirement_courses rows.
 -- Nesting is modelled via parent_group_id; NULL means top-level within the program.
 CREATE TABLE IF NOT EXISTS requirement_groups (
     group_id         INTEGER PRIMARY KEY AUTOINCREMENT,
