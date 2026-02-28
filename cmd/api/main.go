@@ -74,6 +74,13 @@ func main() {
 
 	// --- User/plan routes (protected — JWT required) ---
 	http.HandleFunc("/api/users/", func(w http.ResponseWriter, r *http.Request) {
+		// GPA endpoint: GET /api/users/:id/gpa
+		// Must be checked before /plan to avoid prefix conflicts
+		if strings.HasSuffix(r.URL.Path, "/gpa") {
+			pkg.RequireAuth(pkg.GetUserGPAHandler(repo))(w, r)
+			return
+		}
+
 		// Validation route: GET /api/users/:id/validation
 		if strings.HasSuffix(r.URL.Path, "/validation") {
 			pkg.RequireAuth(pkg.GetUserValidationHandler(repo, svc))(w, r)

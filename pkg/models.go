@@ -1,5 +1,7 @@
 package pkg
 
+import "strconv"
+
 // Core models for Course, Professor, Review
 
 type Course struct {
@@ -93,4 +95,17 @@ type ValidationResult struct {
 	UnitsRemaining      int             `json:"units_remaining"`
 	Groups              []GroupResult   `json:"groups"`
 	PrereqWarnings      []PrereqWarning `json:"prereq_warnings"`
+}
+
+func UnitsFromCourseNumber(courseNumber string, defaultUnits int) int {
+	if len(courseNumber) < 2 {
+		return defaultUnits
+	}
+	// Last two characters are the unit count
+	suffix := courseNumber[len(courseNumber)-2:]
+	n, err := strconv.Atoi(suffix)
+	if err != nil || n == 0 {
+		return defaultUnits
+	}
+	return n
 }

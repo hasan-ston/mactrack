@@ -8,7 +8,11 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import {
+  Dialog, DialogContent, DialogDescription,
+  DialogFooter, DialogHeader, DialogTitle
+} from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { useAuth } from "../contexts/AuthContext";
@@ -38,7 +42,6 @@ interface APIProgram {
   total_units: number | null;
 }
 
-// Mirrors the Go ValidationResult / GroupResult structs
 interface GroupResult {
   heading: string;
   satisfied: boolean;
@@ -60,28 +63,117 @@ interface ValidationResult {
   prereq_warnings: PrereqWarning[];
 }
 
+interface GPAResult {
+  gpa: number;
+  has_grades: boolean;
+  letter_grade: string;
+}
+
 // ---------------------------------------------------------------------------
-// Constants
+// Helpers
 // ---------------------------------------------------------------------------
+
+function unitsFromCourseNumber(courseNumber: string): number {
+  const suffix = courseNumber.slice(-2);
+  const n = parseInt(suffix, 10);
+  return isNaN(n) || n === 0 ? 3 : n;
+}
 
 const UNITS_TO_GRADUATE = 120;
-const UNITS_PER_COURSE = 3;
+
+// Valid McMaster letter grades for the grade input hint
+const GRADE_OPTIONS = ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "D-", "F"];
 
 // ---------------------------------------------------------------------------
-// Sub-component: DegreeValidation
-// Fetches and renders the full validation breakdown.
-// Kept separate so its loading state doesn't block the rest of the dashboard.
+// GradePromptDialog
+// Shown when a user marks a course as COMPLETED — lets them optionally
+// enter their letter grade before saving.
+// ---------------------------------------------------------------------------
+
+function GradePromptDialog({
+  open,
+  courseName,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  courseName: string;
+  onConfirm: (grade: string | null) => void;
+  onCancel: () => void;
+}) {
+  const [grade, setGrade] = useState("");
+
+  // Reset grade input each time the dialog opens for a new course
+  useEffect(() => {
+    if (open) setGrade("");
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Mark as Completed</DialogTitle>
+          <DialogDescription>
+            Optionally enter your grade for <span className="font-medium">{courseName}</span>.
+            You can skip this and add it later.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2">
+          <Label htmlFor="grade-input">Grade (optional)</Label>
+          {/* Free-text input with datalist for autocomplete suggestions */}
+          <Input
+            id="grade-input"
+            list="grade-options"
+            placeholder="e.g. A+"
+            value={grade}
+            onChange={(e) => setGrade(e.target.value.toUpperCase())}
+            className="uppercase"
+          />
+          <datalist id="grade-options">
+            {GRADE_OPTIONS.map(g => <option key={g} value={g} />)}
+          </datalist>
+          <p className="text-xs text-muted-foreground">
+            Valid grades: {GRADE_OPTIONS.join(", ")}
+          </p>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+          <Button
+            variant="outline"
+            onClick={() => onConfirm(null)}
+          >
+            Skip Grade
+          </Button>
+          <Button
+            onClick={() => {
+              // Validate grade is one of the known values or empty
+              const trimmed = grade.trim();
+              const valid = GRADE_OPTIONS.includes(trimmed);
+              onConfirm(valid ? trimmed : null);
+            }}
+            disabled={grade.trim() !== "" && !GRADE_OPTIONS.includes(grade.trim())}
+          >
+            Confirm
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DegreeValidation sub-component
 // ---------------------------------------------------------------------------
 
 function DegreeValidation({ userID, programName }: { userID: number; programName: string }) {
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Track which groups are expanded — default all collapsed
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
-    // Step 1: find the program_id by matching user.program name against /api/programs
     authFetch("/api/programs")
       .then(res => {
         if (!res.ok) throw new Error(`Programs fetch returned ${res.status}`);
@@ -102,16 +194,13 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
         if (!res.ok) throw new Error(`Validation returned ${res.status}`);
         return res.json() as Promise<ValidationResult>;
       })
-      .then(data => {
-        setValidation(data);
-        setError(null);
-      })
+      .then(data => { setValidation(data); setError(null); })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, [userID, programName]);
 
-  const toggleGroup = (index: number) =>
-    setExpanded(prev => ({ ...prev, [index]: !prev[index] }));
+  const toggleGroup = (i: number) =>
+    setExpanded(prev => ({ ...prev, [i]: !prev[i] }));
 
   if (loading) {
     return (
@@ -136,12 +225,10 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
   const satisfiedCount = validation.groups.filter(g => g.satisfied).length;
   const totalGroups = validation.groups.length;
   const progressPercent = totalGroups > 0
-    ? Math.round((satisfiedCount / totalGroups) * 100)
-    : 0;
+    ? Math.round((satisfiedCount / totalGroups) * 100) : 0;
 
   return (
     <div className="space-y-4">
-      {/* Overall progress bar */}
       <div className="space-y-2">
         <div className="flex justify-between text-sm">
           <span>Requirements Satisfied</span>
@@ -150,7 +237,6 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
         <Progress value={progressPercent} />
       </div>
 
-      {/* Unit summary */}
       <div className="grid grid-cols-3 gap-3">
         <div className="text-center p-3 bg-muted/50 rounded-lg">
           <div className="text-xl font-bold text-green-600">{validation.total_units_completed}</div>
@@ -166,7 +252,6 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
         </div>
       </div>
 
-      {/* Prereq warnings — shown prominently if any exist */}
       {validation.prereq_warnings.length > 0 && (
         <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4 space-y-2">
           <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400 font-medium text-sm">
@@ -184,11 +269,9 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
         </div>
       )}
 
-      {/* Requirement groups — collapsible list */}
       <div className="space-y-2">
         {validation.groups.map((group, i) => (
           <div key={i} className="border rounded-lg overflow-hidden">
-            {/* Group header — always visible, click to expand */}
             <button
               onClick={() => toggleGroup(i)}
               className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors text-left"
@@ -205,7 +288,6 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
                 )}
                 <span className="text-sm font-medium truncate">{group.heading}</span>
               </div>
-
               <div className="flex items-center gap-3 flex-shrink-0 ml-2">
                 {group.units_required > 0 && (
                   <span className="text-xs text-muted-foreground">
@@ -230,20 +312,13 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
               </div>
             </button>
 
-            {/* Missing courses — shown when expanded */}
             {expanded[i] && group.missing_courses.length > 0 && (
               <div className="border-t px-4 py-3 bg-muted/20">
                 <p className="text-xs text-muted-foreground mb-2 font-medium">Still needed:</p>
                 <div className="flex flex-wrap gap-2">
                   {group.missing_courses.map((code, j) => (
-                    <Link
-                      key={j}
-                      to={`/courses/${code.split(" ")[0]}/${code.split(" ")[1]}`}
-                    >
-                      <Badge
-                        variant="outline"
-                        className="text-xs hover:bg-primary/10 transition-colors cursor-pointer"
-                      >
+                    <Link key={j} to={`/courses/${code.split(" ")[0]}/${code.split(" ")[1]}`}>
+                      <Badge variant="outline" className="text-xs hover:bg-primary/10 transition-colors cursor-pointer">
                         {code}
                       </Badge>
                     </Link>
@@ -259,7 +334,7 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
 }
 
 // ---------------------------------------------------------------------------
-// Main Dashboard component
+// Main Dashboard
 // ---------------------------------------------------------------------------
 
 export function UserDashboard() {
@@ -268,15 +343,12 @@ export function UserDashboard() {
   const [planItems, setPlanItems] = useState<APIPlanItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [gpaData, setGpaData] = useState<GPAResult | null>(null);
 
-  // ---- Mark Complete dialog state ----
-  // completingItem holds the plan item currently being marked complete.
-  // gradeInput holds the grade string typed by the user (optional).
-  const [completingItem, setCompletingItem] = useState<APIPlanItem | null>(null);
-  const [gradeInput, setGradeInput] = useState("");
-  const [markingLoading, setMarkingLoading] = useState(false);
+  // Grade prompt dialog state — holds the item being marked complete
+  // until the user confirms (with or without a grade)
+  const [pendingComplete, setPendingComplete] = useState<APIPlanItem | null>(null);
 
-  // Fetch the user's full plan on mount
   useEffect(() => {
     if (!user) return;
     authFetch(`/api/users/${user.userID}/plan`)
@@ -284,78 +356,74 @@ export function UserDashboard() {
         if (!res.ok) throw new Error(`Server returned ${res.status}`);
         return res.json();
       })
-      .then((data: APIPlanItem[]) => {
-        setPlanItems(data ?? []);
-        setError(null);
-      })
+      .then((data: APIPlanItem[]) => { setPlanItems(data ?? []); setError(null); })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, [user]);
 
-  // ---------------------------------------------------------------------------
-  // Mark a planned course as COMPLETED with an optional grade.
-  // Calls PATCH /api/users/:id/plan/:itemId with { status, grade }.
-  // On success, updates the item locally without a full re-fetch.
-  // ---------------------------------------------------------------------------
-  const handleMarkComplete = async () => {
-    if (!completingItem || !user) return;
-    setMarkingLoading(true);
+  useEffect(() => {
+    if (!user) return;
+    authFetch(`/api/users/${user.userID}/gpa`)
+      .then(res => res.json())
+      .then((data: GPAResult) => setGpaData(data))
+      .catch(() => setGpaData(null));
+  }, [user]);
 
-    try {
-      const res = await authFetch(
-        `/api/users/${user.userID}/plan/${completingItem.plan_item_id}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            status: "COMPLETED",
-            // Send null if no grade entered, otherwise send the trimmed string
-            grade: gradeInput.trim() !== "" ? gradeInput.trim() : null,
-          }),
-        }
-      );
-
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-
-      // Optimistic update — flip the item locally without re-fetching
-      setPlanItems(prev =>
-        prev.map(pi =>
-          pi.plan_item_id === completingItem.plan_item_id
-            ? {
-                ...pi,
-                status: "COMPLETED",
-                grade: gradeInput.trim() !== "" ? gradeInput.trim() : null,
-              }
-            : pi
-        )
-      );
-
-      // Reset dialog state
-      setCompletingItem(null);
-      setGradeInput("");
-    } catch (err) {
-      console.error("Failed to mark course complete:", err);
-    } finally {
-      setMarkingLoading(false);
-    }
+  // Refresh plan and GPA after any status/grade change
+  const refreshPlan = async () => {
+    if (!user) return;
+    const [planData, gpaRes] = await Promise.all([
+      authFetch(`/api/users/${user.userID}/plan`).then(r => r.json()),
+      authFetch(`/api/users/${user.userID}/gpa`).then(r => r.json()),
+    ]);
+    setPlanItems(planData ?? []);
+    setGpaData(gpaRes);
   };
 
-  // ---------------------------------------------------------------------------
-  // Derived stats
-  // ---------------------------------------------------------------------------
+  // Called when user picks a status from the dropdown
+  const handleStatusChange = async (item: APIPlanItem, newStatus: string) => {
+    if (newStatus === "COMPLETED") {
+      // Don't save yet — open the grade prompt dialog first
+      setPendingComplete(item);
+      return;
+    }
+    // For all other statuses, save immediately
+    await authFetch(`/api/users/${user!.userID}/plan/${item.plan_item_id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: newStatus }),
+    });
+    await refreshPlan();
+  };
+
+  // Called when user confirms the grade prompt (grade may be null if skipped)
+  const handleGradeConfirm = async (grade: string | null) => {
+    if (!pendingComplete || !user) return;
+    await authFetch(`/api/users/${user.userID}/plan/${pendingComplete.plan_item_id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "COMPLETED", grade: grade ?? "" }),
+    });
+    setPendingComplete(null);
+    await refreshPlan();
+  };
+
+  const handleGradeCancel = () => {
+    // User cancelled — don't change the status at all
+    setPendingComplete(null);
+  };
 
   const completedItems = planItems.filter(pi => pi.status === "COMPLETED");
   const plannedItems = planItems.filter(
     pi => pi.status === "PLANNED" || pi.status === "IN_PROGRESS"
   );
 
-  const unitsCompleted = completedItems.length * UNITS_PER_COURSE;
-  const unitsPlanned = plannedItems.length * UNITS_PER_COURSE;
+  const unitsCompleted = completedItems.reduce(
+    (sum, pi) => sum + unitsFromCourseNumber(pi.course_number), 0
+  );
+  const unitsPlanned = plannedItems.reduce(
+    (sum, pi) => sum + unitsFromCourseNumber(pi.course_number), 0
+  );
   const unitsRemaining = UNITS_TO_GRADUATE - unitsCompleted;
   const progressPercent = Math.min((unitsCompleted / UNITS_TO_GRADUATE) * 100, 100);
-
-  // ---------------------------------------------------------------------------
-  // Render states
-  // ---------------------------------------------------------------------------
 
   if (loading) {
     return (
@@ -376,79 +444,21 @@ export function UserDashboard() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Mark Complete dialog                                                 */}
-      {/* Opens when the user clicks "Mark Complete" on a planned course.     */}
-      {/* ------------------------------------------------------------------ */}
-      <Dialog
-        open={!!completingItem}
-        onOpenChange={(open) => {
-          // Reset dialog state when closed
-          if (!open) {
-            setCompletingItem(null);
-            setGradeInput("");
-          }
-        }}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Mark as Complete</DialogTitle>
-            <DialogDescription>
-              {completingItem
-                ? `Mark ${completingItem.subject} ${completingItem.course_number} as completed.`
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
+      {/* Grade prompt dialog — shown when user picks "Completed" */}
+      <GradePromptDialog
+        open={pendingComplete !== null}
+        courseName={pendingComplete
+          ? `${pendingComplete.subject} ${pendingComplete.course_number}`
+          : ""}
+        onConfirm={handleGradeConfirm}
+        onCancel={handleGradeCancel}
+      />
 
-          <div className="space-y-4 pt-2">
-            {/* Grade input — optional */}
-            <div className="space-y-2">
-              <Label htmlFor="grade-input">Grade (optional)</Label>
-              <Input
-                id="grade-input"
-                placeholder="e.g. A+, 85, 11"
-                value={gradeInput}
-                onChange={(e) => setGradeInput(e.target.value)}
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                onClick={handleMarkComplete}
-                disabled={markingLoading}
-              >
-                {markingLoading
-                  ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  : <CheckCircle2 className="h-4 w-4 mr-2" />
-                }
-                Confirm
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  setCompletingItem(null);
-                  setGradeInput("");
-                }}
-                disabled={markingLoading}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Header                                                               */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">My Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Welcome back, {user?.displayName}
-          </p>
+          <p className="text-muted-foreground mt-1">Welcome back, {user?.displayName}</p>
         </div>
         <Button asChild>
           <Link to="/planner">
@@ -458,24 +468,20 @@ export function UserDashboard() {
         </Button>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Profile card                                                         */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Profile card */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row gap-6">
             <div className="h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center mx-auto md:mx-0">
               <User className="h-12 w-12 text-primary" />
             </div>
-
             <div className="flex-1 space-y-3">
               <div>
                 <h2 className="text-2xl font-bold">{user?.displayName}</h2>
                 <p className="text-muted-foreground">
                   {user?.program || user?.yearOfStudy
                     ? [user?.program, user?.yearOfStudy ? `Year ${user.yearOfStudy}` : null]
-                        .filter(Boolean)
-                        .join(" · ")
+                        .filter(Boolean).join(" · ")
                     : user?.email}
                 </p>
               </div>
@@ -487,9 +493,7 @@ export function UserDashboard() {
         </CardContent>
       </Card>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Stats                                                                */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
@@ -502,7 +506,6 @@ export function UserDashboard() {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2">
@@ -514,7 +517,6 @@ export function UserDashboard() {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2">
@@ -526,23 +528,24 @@ export function UserDashboard() {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-purple-500" />
               <div>
-                <div className="text-2xl font-bold">–</div>
-                <div className="text-xs text-muted-foreground">Average Grade</div>
+                <div className="text-2xl font-bold">
+                  {gpaData?.has_grades ? gpaData.gpa.toFixed(1) : "–"}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {gpaData?.has_grades ? `${gpaData.letter_grade} · GPA` : "Average Grade"}
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Degree Progress                                                       */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Degree Progress */}
       <Card>
         <CardHeader>
           <CardTitle>Degree Progress</CardTitle>
@@ -556,7 +559,6 @@ export function UserDashboard() {
             </div>
             <Progress value={progressPercent} />
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
             <div className="text-center p-4 bg-muted/50 rounded-lg">
               <div className="text-2xl font-bold">{unitsCompleted}</div>
@@ -574,9 +576,7 @@ export function UserDashboard() {
         </CardContent>
       </Card>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Requirement Validation                                               */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Requirement Breakdown */}
       <Card>
         <CardHeader>
           <CardTitle>Requirement Breakdown</CardTitle>
@@ -597,9 +597,7 @@ export function UserDashboard() {
         </CardContent>
       </Card>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Completed courses                                                    */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Completed courses */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -620,23 +618,14 @@ export function UserDashboard() {
               </p>
             ) : (
               completedItems.map(item => (
-                <Link
-                  key={item.plan_item_id}
-                  to={`/courses/${item.subject}/${item.course_number}`}
-                >
-                  <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <h3 className="font-semibold">
-                        {item.subject} {item.course_number}
-                      </h3>
-                      <Badge variant="secondary">{UNITS_PER_COURSE} units</Badge>
-                      <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
-                        Completed
-                      </Badge>
-                      {item.grade && (
-                        <Badge variant="outline">{item.grade}</Badge>
-                      )}
-                    </div>
+                <Link key={item.plan_item_id} to={`/courses/${item.subject}/${item.course_number}`}>
+                  <div className="flex items-center gap-3 flex-wrap p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <h3 className="font-semibold">{item.subject} {item.course_number}</h3>
+                    <Badge variant="secondary">{unitsFromCourseNumber(item.course_number)} units</Badge>
+                    <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                      Completed
+                    </Badge>
+                    {item.grade && <Badge variant="outline">{item.grade}</Badge>}
                   </div>
                 </Link>
               ))
@@ -645,11 +634,7 @@ export function UserDashboard() {
         </CardContent>
       </Card>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Planned courses                                                       */}
-      {/* Each card has a "Mark Complete" button that opens the dialog above.  */}
-      {/* We stop the Link's click from firing when the button is clicked.     */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Planned courses — with inline status dropdown + grade prompt */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -674,36 +659,33 @@ export function UserDashboard() {
                   key={item.plan_item_id}
                   className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                 >
-                  {/* Left side — course info, wrapped in a Link */}
+                  {/* Course info — clicking navigates to course detail */}
                   <Link
                     to={`/courses/${item.subject}/${item.course_number}`}
-                    className="flex items-center gap-3 flex-wrap flex-1 min-w-0"
+                    className="flex items-center gap-3 flex-wrap flex-1"
                   >
-                    <h3 className="font-semibold">
-                      {item.subject} {item.course_number}
-                    </h3>
-                    <Badge variant="secondary">{UNITS_PER_COURSE} units</Badge>
+                    <h3 className="font-semibold">{item.subject} {item.course_number}</h3>
+                    <Badge variant="secondary">{unitsFromCourseNumber(item.course_number)} units</Badge>
                     <Badge variant="outline">
                       {item.season} {new Date().getFullYear() + item.year_index - 1}
                     </Badge>
-                    <Badge variant="outline">{item.status}</Badge>
                   </Link>
 
-                  {/* Right side — Mark Complete button.
-                      stopPropagation prevents the Link from navigating when clicked. */}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="ml-4 flex-shrink-0 text-green-600 border-green-500/30 hover:bg-green-500/10"
-                    onClick={(e) => {
-                      e.preventDefault(); // prevent Link navigation
-                      setCompletingItem(item);
-                      setGradeInput(item.grade ?? "");
-                    }}
+                  {/* Status dropdown — selecting COMPLETED triggers grade prompt */}
+                  <Select
+                    value={item.status}
+                    onValueChange={(newStatus) => handleStatusChange(item, newStatus)}
                   >
-                    <CheckCircle2 className="h-4 w-4 mr-1" />
-                    Mark Complete
-                  </Button>
+                    <SelectTrigger className="h-7 text-xs w-32 ml-2">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PLANNED">Planned</SelectItem>
+                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                      <SelectItem value="COMPLETED">Completed</SelectItem>
+                      <SelectItem value="DROPPED">Dropped</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               ))
             )}

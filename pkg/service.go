@@ -4,6 +4,7 @@ package pkg
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -11,14 +12,25 @@ type Service struct {
 	Repo *Repository
 }
 
-// ValidatePlan takes a user's planned/completed courses and a program's
-// requirements, and returns what's satisfied and what's missing.
-// This implementation assumes a default unit value per course when unit
-// values are not available (defaultUnitsPerCourse = 3).
+func unitsFromCourseNumber(courseNumber string, defaultUnits int) int {
+	if len(courseNumber) < 2 {
+		return defaultUnits
+	}
+	// Last two characters encode the unit count
+	suffix := courseNumber[len(courseNumber)-2:]
+	n, err := strconv.Atoi(suffix)
+	if err != nil || n == 0 {
+		return defaultUnits
+	}
+	return n
+}
+
 func (s *Service) ValidatePlan(planItems []PlanItem, program *Program) (ValidationResult, error) {
+	// Fallback unit value when the course number suffix can't be parsed
 	const defaultUnitsPerCourse = 3
 
-	// Build set of completed courses (subject + " " + course_number)
+	// Build set of completed courses keyed as "SUBJECT COURSENUMBER"
+	// e.g. "COMPSCI 2C03", "ENGINEER 1P13"
 	completedSet := map[string]PlanItem{}
 	for _, pi := range planItems {
 		key := strings.TrimSpace(pi.Subject + " " + pi.CourseNumber)
@@ -26,45 +38,72 @@ func (s *Service) ValidatePlan(planItems []PlanItem, program *Program) (Validati
 			completedSet[key] = pi
 		}
 	}
-
-	// PREREQ CHECK: for each planned or in-progress course, lookup requisites
+	
 	prereqWarnings := []PrereqWarning{}
 	for _, pi := range planItems {
 		statusUpper := strings.ToUpper(pi.Status)
-		if statusUpper == "PLANNED" || statusUpper == "IN_PROGRESS" {
-			// query requisites for this course
-			rows, err := s.Repo.DB.Query(`SELECT req_subject, req_course_number FROM requisites WHERE subject = ? AND course_number = ? AND kind = 'PREREQ'`, pi.Subject, pi.CourseNumber)
-			if err != nil {
-				return ValidationResult{}, fmt.Errorf("prereq query: %w", err)
+		if statusUpper != "PLANNED" && statusUpper != "IN_PROGRESS" {
+			continue
+		}
+
+		rows, err := s.Repo.DB.Query(`
+			SELECT req_subject, req_course_number 
+			FROM requisites 
+			WHERE subject = ? AND course_number = ? AND kind = 'PREREQ'`,
+			pi.Subject, pi.CourseNumber)
+		if err != nil {
+			return ValidationResult{}, fmt.Errorf("prereq query: %w", err)
+		}
+
+		var prereqs []string
+		for rows.Next() {
+			var rs, rn string
+			if err := rows.Scan(&rs, &rn); err != nil {
+				rows.Close()
+				return ValidationResult{}, err
 			}
-			for rows.Next() {
-				var rs, rn string
-				if err := rows.Scan(&rs, &rn); err != nil {
-					rows.Close()
-					return ValidationResult{}, err
-				}
-				need := strings.TrimSpace(rs + " " + rn)
-				if _, ok := completedSet[need]; !ok {
-					prereqWarnings = append(prereqWarnings, PrereqWarning{Course: strings.TrimSpace(pi.Subject + " " + pi.CourseNumber), MissingPrereq: need})
+			prereqs = append(prereqs, strings.TrimSpace(rs+" "+rn))
+		}
+		rows.Close()
+
+		// Only warn if there are prereqs AND none of them are completed.
+		// If any single prereq is done, the requirement is satisfied.
+		if len(prereqs) > 0 {
+			anyCompleted := false
+			for _, need := range prereqs {
+				if _, ok := completedSet[need]; ok {
+					anyCompleted = true
+					break
 				}
 			}
-			rows.Close()
+			if !anyCompleted {
+				// Show all options so the student knows what they can take
+				prereqWarnings = append(prereqWarnings, PrereqWarning{
+					Course:        strings.TrimSpace(pi.Subject + " " + pi.CourseNumber),
+					MissingPrereq: strings.Join(prereqs, " or "),
+				})
+			}
 		}
 	}
 
-	// CREDITS REMAINING and OR group handling
+	// REQUIREMENT GROUP VALIDATION
 	totalRequired := 0
 	totalCompleted := 0
 	groupResults := []GroupResult{}
 
 	var walkGroup func(g RequirementGroup)
 	walkGroup = func(g RequirementGroup) {
+		// Container groups (headings like "Level II: 30 Units") have no direct
+		// courses — just recurse into their children and skip adding a result row.
 		if g.IsContainer || (len(g.Courses) == 0 && len(g.Children) > 0) {
 			for _, child := range g.Children {
 				walkGroup(child)
 			}
 			return
 		}
+
+		// Determine how many units this group requires.
+		// Prefer units_required; fall back to courses_required × default units.
 		unitsReq := 0
 		if g.UnitsRequired != nil {
 			unitsReq = *g.UnitsRequired
@@ -78,15 +117,15 @@ func (s *Service) ValidatePlan(planItems []PlanItem, program *Program) (Validati
 		unitsCompleted := 0
 		missing := []string{}
 
-		// iterate courses and handle OR chains
+		// Walk courses in order, handling OR chains (is_or_with_next flag).
+		// An OR chain means the student needs to complete any ONE of the linked
+		// courses — e.g. "MATH 1B03 or MATH 1ZA3 or MATH 1ZB3".
 		for i := 0; i < len(g.Courses); i++ {
 			rc := g.Courses[i]
-			// Determine canonical course code to match against completedSet
 			code := strings.TrimSpace(rc.CourseCode)
-			matched := false
 
 			if rc.IsOrWithNext {
-				// start OR chain
+				// Collect the full OR chain starting at this course
 				chain := []RequirementCourse{rc}
 				j := i + 1
 				for j < len(g.Courses) {
@@ -96,32 +135,45 @@ func (s *Service) ValidatePlan(planItems []PlanItem, program *Program) (Validati
 					}
 					j++
 				}
-				// check any in chain completed
+
+				// OR chain is satisfied if ANY course in it is completed
+				matched := false
+				var matchedCode string
 				for _, c := range chain {
 					key := strings.TrimSpace(c.CourseCode)
 					if _, ok := completedSet[key]; ok {
 						matched = true
+						matchedCode = key
 						break
 					}
 				}
+
 				if matched {
-					unitsCompleted += defaultUnitsPerCourse
+					// Use the actual unit value of the completed course
+					units := unitsFromCourseNumber(
+						strings.TrimSpace(strings.SplitN(matchedCode, " ", 2)[1]),
+						defaultUnitsPerCourse,
+					)
+					unitsCompleted += units
 				} else {
+					// None completed — add all options to missing list
 					for _, c := range chain {
-						missing = append(missing, strings.TrimSpace(c.CourseCode))
+						if c.CourseCode != "" {
+							missing = append(missing, strings.TrimSpace(c.CourseCode))
+						}
 					}
 				}
-				// advance i to last element of chain
+
+				// Advance past the entire chain
 				i = i + len(chain) - 1
 				continue
 			}
 
-			// normal single course
+			// Single required course (no OR alternative)
 			if _, ok := completedSet[code]; ok {
-				matched = true
-			}
-			if matched {
-				unitsCompleted += defaultUnitsPerCourse
+				// Parse units from the course number suffix (e.g. "1P13" → 13)
+				units := unitsFromCourseNumber(strings.SplitN(rc.CourseCode, " ", 2)[1], defaultUnitsPerCourse)
+				unitsCompleted += units
 			} else {
 				if code != "" {
 					missing = append(missing, code)
@@ -129,10 +181,10 @@ func (s *Service) ValidatePlan(planItems []PlanItem, program *Program) (Validati
 			}
 		}
 
-		// derive satisfied flag
+		// Group is satisfied when completed units meet or exceed the requirement.
+		// If no explicit unit requirement, satisfied means no missing courses.
 		satisfied := false
 		if unitsReq == 0 {
-			// if no explicit units required, consider group satisfied if no courses required
 			satisfied = len(missing) == 0
 		} else {
 			satisfied = unitsCompleted >= unitsReq
@@ -142,16 +194,15 @@ func (s *Service) ValidatePlan(planItems []PlanItem, program *Program) (Validati
 			totalCompleted += unitsCompleted
 		}
 
-		gr := GroupResult{
+		groupResults = append(groupResults, GroupResult{
 			Heading:        g.Heading,
 			Satisfied:      satisfied,
 			UnitsCompleted: unitsCompleted,
 			UnitsRequired:  unitsReq,
 			MissingCourses: missing,
-		}
-		groupResults = append(groupResults, gr)
+		})
 
-		// Recurse into children groups
+		// Recurse into any child groups (some leaf groups still have children)
 		for _, child := range g.Children {
 			walkGroup(child)
 		}

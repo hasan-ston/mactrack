@@ -309,6 +309,59 @@ func GetUserValidationHandler(repo *Repository, svc *Service) http.HandlerFunc {
 	}
 }
 
+// GetUserGPAHandler serves GET /api/users/{id}/gpa
+// Returns JSON: { gpa: float64, has_grades: bool, letter_grade: string }
+func GetUserGPAHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse user ID from path: /api/users/{id}/gpa
+		idStr := strings.TrimPrefix(r.URL.Path, "/api/users/")
+		idStr = strings.TrimSuffix(idStr, "/gpa")
+		userID, err := strconv.Atoi(strings.Trim(idStr, "/"))
+		if err != nil || userID == 0 {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		gpa, ok, err := repo.GetUserGPA(userID)
+		if err != nil {
+			log.Printf("failed to compute gpa: %v", err)
+			http.Error(w, "failed to compute gpa", http.StatusInternalServerError)
+			return
+		}
+
+		// Determine nearest letter grade from the mcmasterGPAScale
+		letter := ""
+		if ok {
+			// Find the grade with minimal absolute difference to the numeric gpa
+			best := ""
+			bestDiff := 1e9
+			for grade, val := range mcmasterGPAScale {
+				diff := val - gpa
+				if diff < 0 {
+					diff = -diff
+				}
+				if diff < bestDiff {
+					bestDiff = diff
+					best = grade
+				}
+			}
+			letter = best
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"gpa":          gpa,
+			"has_grades":   ok,
+			"letter_grade": letter,
+		})
+	}
+}
+
 // CourseBySubjectNumberHandler serves GET /api/courses/{subject}/{number}
 // Used by DegreePlanner and CourseDetail when navigating by subject+number
 // instead of numeric ID.
