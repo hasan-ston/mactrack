@@ -103,7 +103,7 @@ export function DegreePlanner() {
   const [mutating, setMutating] = useState(false);
 
   const [filterSubject, setFilterSubject] = useState<string>("ALL");
-  const [filterLevel, setFilterLevel] = useState<string>("ALL"); 
+  const [filterLevel, setFilterLevel] = useState<string>("ALL");
   const [filterOfferingSeason, setFilterOfferingSeason] = useState<string>("ALL");
 
   const subjectOptions = Array.from(new Set(searchResults.map(c => c.subject))).sort((a, b) => a.localeCompare(b));
@@ -151,6 +151,14 @@ export function DegreePlanner() {
   useEffect(() => {
     if (dialogOpen) searchCourses("");
   }, [dialogOpen, searchCourses]);
+
+  useEffect(() => {
+    if (!dialogOpen) {
+      setFilterSubject("ALL");
+      setFilterLevel("ALL");
+      setFilterOfferingSeason("ALL");
+    }
+  }, [dialogOpen]);
 
   // Add course to plan
   const handleAddCourse = async () => {
@@ -219,17 +227,17 @@ export function DegreePlanner() {
 
   const filteredResults = searchResults.filter(c => {
     if (filterSubject !== "ALL" && c.subject !== filterSubject) return false;
-  
+
     if (filterLevel !== "ALL") {
       const lvl = levelFromCourseNumber(c.course_number);
       if (!lvl || lvl.toString() !== filterLevel) return false;
     }
-  
+
     if (filterOfferingSeason !== "ALL") {
       const s = seasonFromOfferingTerm(c.term);
       if (s !== filterOfferingSeason) return false;
     }
-  
+
     return true;
   });
 
@@ -287,6 +295,59 @@ export function DegreePlanner() {
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-2">
+                  <Label>Subject</Label>
+                  <Select value={filterSubject} onValueChange={setFilterSubject}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All</SelectItem>
+                      {subjectOptions.map((subj) => (
+                        <SelectItem key={subj} value={subj}>
+                          {subj}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Level</Label>
+                  <Select value={filterLevel} onValueChange={setFilterLevel}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All</SelectItem>
+                      {levelOptions.map((lvl) => (
+                        <SelectItem key={lvl} value={lvl}>
+                          {lvl}xxx
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Offered</Label>
+                  <Select value={filterOfferingSeason} onValueChange={setFilterOfferingSeason}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All</SelectItem>
+                      {offeringSeasonOptions.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg">
                 {searchLoading ? (
                   <div className="flex justify-center py-8">
@@ -294,16 +355,15 @@ export function DegreePlanner() {
                   </div>
                 ) : filteredResults.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
-                    {searchQuery ? "No courses found" : "Start typing to search courses"}
+                    {searchQuery ? "No courses found" : (filterSubject !== "ALL" || filterLevel !== "ALL" || filterOfferingSeason !== "ALL") ? "No courses match your filters" : "Start typing to search courses"}
                   </p>
                 ) : (
                   filteredResults.map(course => (
                     <button
                       key={`${course.subject}-${course.course_number}-${course.term}`}
                       onClick={() => setSelectedCourse(course)}
-                      className={`w-full text-left p-3 border-b last:border-b-0 hover:bg-muted/50 transition-colors ${
-                        selectedCourse?.id === course.id ? "bg-muted" : ""
-                      }`}
+                      className={`w-full text-left p-3 border-b last:border-b-0 hover:bg-muted/50 transition-colors ${selectedCourse?.id === course.id ? "bg-muted" : ""
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
@@ -466,7 +526,7 @@ export function DegreePlanner() {
                                   {item.status}
                                 </Badge>
                                 {/* Status changer — lets user mark course as completed and enter grade */}
-                                
+
                                 <Select
                                   value={item.status}
                                   onValueChange={async (newStatus) => {
