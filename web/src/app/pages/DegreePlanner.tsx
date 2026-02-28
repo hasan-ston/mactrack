@@ -8,12 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { RatingDisplay } from "../components/RatingDisplay";
 import { useAuth } from "../contexts/AuthContext";
 import { authFetch } from "../lib/api";
 
 // ---------------------------------------------------------------------------
-// Types — mirroring what the Go API actually returns
+// Types
 // ---------------------------------------------------------------------------
 
 interface APICourse {
@@ -34,7 +33,6 @@ interface APIPlanItem {
   status: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "DROPPED";
   grade: string | null;
   note: string | null;
-  // Joined fields returned by GET /api/users/:id/plan
   year_index: number;
   season: "Fall" | "Winter" | "Spring" | "Summer";
 }
@@ -46,21 +44,24 @@ interface APIPlanItem {
 const TERMS = ["Fall", "Winter", "Spring/Summer"] as const;
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR + i);
-
-// Total units required for graduation — replace with program-specific value
-// once the degree planner validation API is wired up
 const UNITS_TO_GRADUATE = 120;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Formats a course into a short display code, e.g. "COMPSCI 2C03"
+// Parse unit value from McMaster course number — last 2 digits encode units.
+// e.g. "2C03" → 3, "1P13" → 13. Falls back to 3 if unparseable.
+function unitsFromCourseNumber(courseNumber: string): number {
+  const suffix = courseNumber.slice(-2);
+  const n = parseInt(suffix, 10);
+  return isNaN(n) || n === 0 ? 3 : n;
+}
+
 function courseCode(c: APICourse): string {
   return `${c.subject} ${c.course_number}`;
 }
 
-// Derives a stable string key from a plan item for React list rendering
 function planItemKey(item: APIPlanItem): string {
   return `${item.subject}-${item.course_number}-${item.year_index}-${item.season}`;
 }
@@ -70,57 +71,42 @@ function planItemKey(item: APIPlanItem): string {
 // ---------------------------------------------------------------------------
 
 export function DegreePlanner() {
-  // ---- Auth — provides the real logged-in user's ID ----
   const { user } = useAuth();
 
-  // ---- Course search state (dialog) ----
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<APICourse[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  // ---- Selected course + term in the add dialog ----
   const [selectedCourse, setSelectedCourse] = useState<APICourse | null>(null);
   const [selectedTerm, setSelectedTerm] = useState<string>("Fall");
   const [selectedYear, setSelectedYear] = useState<number>(CURRENT_YEAR);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  // ---- Plan items fetched from the API ----
   const [planItems, setPlanItems] = useState<APIPlanItem[]>([]);
   const [planLoading, setPlanLoading] = useState(true);
   const [planError, setPlanError] = useState<string | null>(null);
-
-  // ---- Adding / removing loading state ----
   const [mutating, setMutating] = useState(false);
 
-  // --------------------------------------------------------------------------
-  // Fetch the user's plan on mount (or when user changes after login)
-  // --------------------------------------------------------------------------
+  // Fetch plan on mount
   useEffect(() => {
-    if (!user) return; // don't fetch if not logged in
+    if (!user) return;
     setPlanLoading(true);
     authFetch(`/api/users/${user.userID}/plan`)
       .then(res => {
         if (!res.ok) throw new Error(`Server returned ${res.status}`);
         return res.json();
       })
-      .then((data: APIPlanItem[]) => {
-        setPlanItems(data ?? []);
-        setPlanError(null);
-      })
+      .then((data: APIPlanItem[]) => { setPlanItems(data ?? []); setPlanError(null); })
       .catch(err => setPlanError(err.message))
       .finally(() => setPlanLoading(false));
-  }, [user]); // re-run if the logged-in user changes
+  }, [user]);
 
-  // --------------------------------------------------------------------------
-  // Search courses — debounced against /api/courses?q=
-  // Course search is public so we use plain fetch here
-  // --------------------------------------------------------------------------
+  // Course search — debounced
   const searchCourses = useCallback((q: string) => {
     setSearchLoading(true);
     fetch(`/api/courses?q=${encodeURIComponent(q)}`)
       .then(res => res.json())
       .then((data: APICourse[]) => {
-        // Filter out courses the user has already planned
         const plannedKeys = new Set(
           planItems.map(pi => `${pi.subject}-${pi.course_number}`)
         );
@@ -132,36 +118,27 @@ export function DegreePlanner() {
       .finally(() => setSearchLoading(false));
   }, [planItems]);
 
-  // Re-run search whenever the query changes (with a small debounce)
   useEffect(() => {
-    if (!dialogOpen) return; // don't fetch when dialog is closed
+    if (!dialogOpen) return;
     const timer = setTimeout(() => searchCourses(searchQuery), 300);
     return () => clearTimeout(timer);
   }, [searchQuery, dialogOpen, searchCourses]);
 
-  // Populate search results when dialog first opens
   useEffect(() => {
     if (dialogOpen) searchCourses("");
   }, [dialogOpen, searchCourses]);
 
-  // --------------------------------------------------------------------------
-  // Add a course to the plan
-  // --------------------------------------------------------------------------
+  // Add course to plan
   const handleAddCourse = async () => {
     if (!selectedCourse || !user) return;
     setMutating(true);
 
-    // Map the display year + term into what the API expects
-    // year_index: 1-based index (e.g. 2026 → index 1 if CURRENT_YEAR=2026)
     const yearIndex = selectedYear - CURRENT_YEAR + 1;
-
-    // Map "Spring/Summer" display label to "Spring" for the DB CHECK constraint
     const season = selectedTerm === "Spring/Summer" ? "Spring" : selectedTerm;
 
     try {
       const res = await authFetch(`/api/users/${user.userID}/plan`, {
         method: "POST",
-        // authFetch already sets Content-Type: application/json
         body: JSON.stringify({
           subject: selectedCourse.subject,
           course_number: selectedCourse.course_number,
@@ -170,14 +147,10 @@ export function DegreePlanner() {
           status: "PLANNED",
         }),
       });
-
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
 
-      // Re-fetch the plan to get the server-assigned IDs
       const updated = await authFetch(`/api/users/${user.userID}/plan`).then(r => r.json());
       setPlanItems(updated ?? []);
-
-      // Reset dialog state
       setSelectedCourse(null);
       setSearchQuery("");
       setDialogOpen(false);
@@ -188,9 +161,7 @@ export function DegreePlanner() {
     }
   };
 
-  // --------------------------------------------------------------------------
-  // Remove a course from the plan
-  // --------------------------------------------------------------------------
+  // Remove course from plan
   const handleRemoveCourse = async (item: APIPlanItem) => {
     if (!user) return;
     setMutating(true);
@@ -198,7 +169,6 @@ export function DegreePlanner() {
       await authFetch(`/api/users/${user.userID}/plan/${item.plan_item_id}`, {
         method: "DELETE",
       });
-      // Optimistic update — remove locally without re-fetching
       setPlanItems(prev => prev.filter(pi => pi.plan_item_id !== item.plan_item_id));
     } catch (err) {
       console.error("Failed to remove course:", err);
@@ -207,33 +177,22 @@ export function DegreePlanner() {
     }
   };
 
-  // --------------------------------------------------------------------------
-  // Derived credit counts
-  // --------------------------------------------------------------------------
-
-  // Each McMaster course is typically 3 units — this will be replaced
-  // with real unit data once coid is linked to the courses table
-  const UNITS_PER_COURSE = 3;
-
+  // Derived unit totals using real unit values from course number suffixes
   const completedItems = planItems.filter(pi => pi.status === "COMPLETED");
-  const unitsCompleted = completedItems.length * UNITS_PER_COURSE;
-  const unitsPlanned = planItems.filter(pi => pi.status === "PLANNED").length * UNITS_PER_COURSE;
+  const unitsCompleted = completedItems.reduce(
+    (sum, pi) => sum + unitsFromCourseNumber(pi.course_number), 0
+  );
+  const unitsPlanned = planItems
+    .filter(pi => pi.status === "PLANNED")
+    .reduce((sum, pi) => sum + unitsFromCourseNumber(pi.course_number), 0);
   const unitsRemaining = UNITS_TO_GRADUATE - unitsCompleted;
 
-  // --------------------------------------------------------------------------
-  // Filter plan items by year + term for the timeline view
-  // --------------------------------------------------------------------------
   const getCoursesByYearAndTerm = (year: number, term: string) => {
     const yearIndex = year - CURRENT_YEAR + 1;
     const season = term === "Spring/Summer" ? "Spring" : term;
-    return planItems.filter(
-      pi => pi.year_index === yearIndex && pi.season === season
-    );
+    return planItems.filter(pi => pi.year_index === yearIndex && pi.season === season);
   };
 
-  // --------------------------------------------------------------------------
-  // Render
-  // --------------------------------------------------------------------------
   if (planLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -253,9 +212,7 @@ export function DegreePlanner() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Header + Add Course button                                          */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Header + Add Course */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Degree Planner</h1>
@@ -281,7 +238,6 @@ export function DegreePlanner() {
             </DialogHeader>
 
             <div className="space-y-4">
-              {/* Search input */}
               <div className="space-y-2">
                 <Label>Search Courses</Label>
                 <Input
@@ -291,7 +247,6 @@ export function DegreePlanner() {
                 />
               </div>
 
-              {/* Results list */}
               <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg">
                 {searchLoading ? (
                   <div className="flex justify-center py-8">
@@ -312,20 +267,22 @@ export function DegreePlanner() {
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
-                          {/* Course code e.g. "COMPSCI 2C03" */}
                           <div className="font-medium">{courseCode(course)}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {course.course_name}
-                          </div>
+                          <div className="text-sm text-muted-foreground">{course.course_name}</div>
                         </div>
-                        <Badge variant="secondary">{course.term}</Badge>
+                        <div className="flex items-center gap-2">
+                          {/* Show real unit value in search results */}
+                          <Badge variant="outline" className="text-xs">
+                            {unitsFromCourseNumber(course.course_number)} units
+                          </Badge>
+                          <Badge variant="secondary">{course.term}</Badge>
+                        </div>
                       </div>
                     </button>
                   ))
                 )}
               </div>
 
-              {/* Term + Year selectors */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Term</Label>
@@ -364,9 +321,7 @@ export function DegreePlanner() {
                 onClick={handleAddCourse}
                 disabled={!selectedCourse || mutating}
               >
-                {mutating ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : null}
+                {mutating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Add to Plan
               </Button>
             </div>
@@ -374,9 +329,7 @@ export function DegreePlanner() {
         </Dialog>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Summary cards                                                        */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="pt-6">
@@ -415,9 +368,7 @@ export function DegreePlanner() {
         </Card>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Timeline view                                                        */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Timeline */}
       <div className="space-y-8">
         {YEARS.map(year => (
           <Card key={year}>
@@ -431,7 +382,10 @@ export function DegreePlanner() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {TERMS.map(term => {
                   const termCourses = getCoursesByYearAndTerm(year, term);
-                  const termUnits = termCourses.length * UNITS_PER_COURSE;
+                  // Sum real unit values for the term total
+                  const termUnits = termCourses.reduce(
+                    (sum, pi) => sum + unitsFromCourseNumber(pi.course_number), 0
+                  );
 
                   return (
                     <div key={term} className="space-y-3">
@@ -453,7 +407,6 @@ export function DegreePlanner() {
                             >
                               <div className="flex items-start justify-between">
                                 <div className="flex-1 min-w-0">
-                                  {/* Link to course detail — uses subject+number as path */}
                                   <Link to={`/courses/${item.subject}/${item.course_number}`}>
                                     <div className="font-medium hover:text-primary transition-colors">
                                       {item.subject} {item.course_number}
@@ -466,15 +419,56 @@ export function DegreePlanner() {
                                   )}
                                 </div>
 
-                                {/* Status badge */}
                                 <Badge
                                   variant={item.status === "COMPLETED" ? "default" : "secondary"}
                                   className="text-xs mr-2"
                                 >
                                   {item.status}
                                 </Badge>
+                                {/* Status changer — lets user mark course as completed and enter grade */}
+                                
+                                <Select
+                                  value={item.status}
+                                  onValueChange={async (newStatus) => {
+                                    await authFetch(`/api/users/${user!.userID}/plan/${item.plan_item_id}`, {
+                                      method: "PATCH",
+                                      body: JSON.stringify({ status: newStatus }),
+                                    });
+                                    const updated = await authFetch(`/api/users/${user!.userID}/plan`).then(r => r.json());
+                                    setPlanItems(updated ?? []);
+                                  }}
+                                >
+                                  <SelectTrigger className="h-6 text-xs w-32">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="PLANNED">Planned</SelectItem>
+                                    <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                                    <SelectItem value="COMPLETED">Completed</SelectItem>
+                                    <SelectItem value="DROPPED">Dropped</SelectItem>
+                                  </SelectContent>
+                                </Select>
 
-                                {/* Remove button */}
+                                {/* Grade input — only shown for completed courses */}
+                                {item.status === "COMPLETED" && (
+                                  <input
+                                    type="text"
+                                    placeholder="Grade (e.g. A+)"
+                                    defaultValue={item.grade ?? ""}
+                                    className="h-6 text-xs px-2 border rounded w-20"
+                                    onBlur={async (e) => {
+                                      const grade = e.target.value.trim();
+                                      if (!grade) return;
+                                      await authFetch(`/api/users/${user!.userID}/plan/${item.plan_item_id}`, {
+                                        method: "PATCH",
+                                        body: JSON.stringify({ status: "COMPLETED", grade }),
+                                      });
+                                      const updated = await authFetch(`/api/users/${user!.userID}/plan`).then(r => r.json());
+                                      setPlanItems(updated ?? []);
+                                    }}
+                                  />
+                                )}
+
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -486,14 +480,12 @@ export function DegreePlanner() {
                                 </Button>
                               </div>
 
-                              {/* Grade if available */}
-                              {item.grade && (
-                                <div className="text-xs text-muted-foreground">
-                                  Grade: {item.grade}
-                                </div>
-                              )}
+                              {/* Show real unit count per course */}
+                              <div className="text-xs text-muted-foreground">
+                                {unitsFromCourseNumber(item.course_number)} units
+                                {item.grade && ` · Grade: ${item.grade}`}
+                              </div>
 
-                              {/* Note if available */}
                               {item.note && (
                                 <div className="text-xs text-muted-foreground line-clamp-1">
                                   {item.note}
@@ -512,9 +504,7 @@ export function DegreePlanner() {
         ))}
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Planning tips                                                        */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Planning tips */}
       <Card className="bg-muted/50">
         <CardHeader>
           <CardTitle className="text-lg">Planning Tips</CardTitle>

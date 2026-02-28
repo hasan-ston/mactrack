@@ -19,6 +19,13 @@
 	- sqlite3 database/courses.db < migrations/006_requisites_seed.sql
 	- sqlite3 database/courses.db < migrations/007_backfill_coids.sql
 	- sqlite3 database/courses.db < migrations/008_users_program_year.sql
+	- sqlite3 database/courses.db < migrations/009_programs_seed.sql
+	- sqlite3 database/courses.db < migrations/010_requirement_groups_seed.sql
+	- sqlite3 database/courses.db < migrations/011_requirement_courses_seed.sql
+	- sqlite3 database/courses.db < migrations/012_missing_courses.sql
+
+
+
 	
 
 ## Frontend (React + Vite)
