@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"strconv"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -135,6 +136,33 @@ func RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 		// Store claims in context so any downstream handler can read the logged-in user's ID
 		next(w, withClaims(r, claims))
 	}
+}
+
+func RequireOwner(next http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        claims := GetClaimsFromContext(r)
+        if claims == nil {
+            http.Error(w, "unauthorized", http.StatusUnauthorized)
+            return
+        }
+
+        // Extract the user ID from the URL — expect /api/users/{id}/...
+        path := strings.TrimPrefix(r.URL.Path, "/api/users/")
+        idStr := strings.SplitN(path, "/", 2)[0]
+        urlUserID, err := strconv.Atoi(idStr)
+        if err != nil || urlUserID == 0 {
+            http.Error(w, "invalid user id", http.StatusBadRequest)
+            return
+        }
+
+        // Reject if the token's user_id doesn't match the URL's user id
+        if claims.UserID != urlUserID {
+            http.Error(w, "forbidden", http.StatusForbidden)
+            return
+        }
+
+        next(w, r)
+    }
 }
 
 // withClaims attaches JWT claims to the request's context and returns the
