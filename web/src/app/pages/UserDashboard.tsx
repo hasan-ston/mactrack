@@ -304,15 +304,14 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
                 >
                   {group.satisfied ? "Done" : group.units_completed > 0 ? "Partial" : "Missing"}
                 </Badge>
-                {group.missing_courses.length > 0 && (
-                  expanded[i]
-                    ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                    : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                {(group.missing_courses.length > 0 || group.units_required > 0) && (
+                  expanded[i] ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                              : <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 )}
               </div>
             </button>
 
-            {expanded[i] && group.missing_courses.length > 0 && (
+            {expanded[i] && (group.missing_courses.length > 0 || group.units_required > 0) && (
               <div className="border-t px-4 py-3 bg-muted/20">
                 <p className="text-xs text-muted-foreground mb-2 font-medium">Still needed:</p>
                 <div className="flex flex-wrap gap-2">
@@ -324,6 +323,14 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
                     </Link>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {expanded[i] && group.missing_courses.length === 0 && group.units_completed < group.units_required && (
+              <div className="border-t px-4 py-3 bg-muted/20">
+                <p className="text-xs text-muted-foreground">
+                  {group.units_required - group.units_completed} units of elective credit still needed
+                </p>
               </div>
             )}
           </div>
