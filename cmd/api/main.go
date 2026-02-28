@@ -74,8 +74,7 @@ func main() {
 
 	// --- User/plan routes (protected — JWT required) ---
 	http.HandleFunc("/api/users/", func(w http.ResponseWriter, r *http.Request) {
-		// Validation route must be checked BEFORE the /plan suffix check,
-		// because it's a GET on a different suffix entirely.
+		// Validation route: GET /api/users/:id/validation
 		if strings.HasSuffix(r.URL.Path, "/validation") {
 			pkg.RequireAuth(pkg.GetUserValidationHandler(repo, svc))(w, r)
 			return
@@ -94,9 +93,17 @@ func main() {
 			return
 		}
 
-		// Plan item: DELETE /api/users/:id/plan/:itemId
-		if r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "/plan/") {
-			pkg.RequireAuth(pkg.DeleteUserPlanItemHandler(repo))(w, r)
+		// Plan item: PATCH or DELETE /api/users/:id/plan/:itemId
+		if strings.Contains(r.URL.Path, "/plan/") {
+			switch r.Method {
+			case http.MethodPatch:
+				// PATCH updates status + grade of a single plan item
+				pkg.RequireAuth(pkg.PatchUserPlanItemHandler(repo))(w, r)
+			case http.MethodDelete:
+				pkg.RequireAuth(pkg.DeleteUserPlanItemHandler(repo))(w, r)
+			default:
+				http.NotFound(w, r)
+			}
 			return
 		}
 

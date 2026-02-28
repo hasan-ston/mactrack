@@ -1,1 +1,0 @@
-stat /Users/muhammadhasan/mactrack/mactrack/cmd/scrapdegrees: directory not found

@@ -53,8 +53,7 @@ func main() {
 		log.Fatalf("set WAL: %v", err)
 	}
 
-	// --- Step 1: Read all distinct coids + course codes from requirement_courses ---
-	// course_code is like "COMPSCI 2C03" — we split it to get subject + number
+	// --- Step 1: Read all distinct coids + course codes from courses ---
 	rows, err := db.Query(`
 		SELECT DISTINCT coid, subject || ' ' || course_number
 		FROM courses
@@ -80,6 +79,7 @@ func main() {
 	}
 	rows.Close() // Close explicitly before any writes
 
+
 	log.Printf("Found %d courses with coids to scrape", len(entries))
 
 	// --- Step 2: Fetch each course page and parse requisites ---
@@ -87,6 +87,7 @@ func main() {
 	skipCount := 0
 
 	for i, entry := range entries {
+
 		// Parse the source course's subject + number from course_code
 		src := parseCourseCode(entry.courseCode)
 		if src.subject == "" {
@@ -180,17 +181,56 @@ func scrapeCourseRequisites(coid int, src courseCode) ([]requisiteRow, error) {
 			return // Not a requisite label, skip
 		}
 
-		// The requisite text follows the <strong> tag as a sibling text node
-		// goquery gives us the next sibling's text via .Parent().Text() minus the label
+		// The requisite text follows the <strong> tag as a sibling text node.
+		// Parent().Text() returns the entire parent element's text, which may
+		// include multiple requisite sections concatenated together.
 		parentText := strings.TrimSpace(s.Parent().Text())
-		// Strip the label prefix to get just the list of courses
-		reqText := strings.TrimSpace(strings.TrimPrefix(parentText, label))
+
+		// TrimPrefix only works if label is at position 0 of parentText.
+		// For pages where both <strong> tags share a large parent element,
+		// the label is buried mid-string — so we use Index to find it
+		// wherever it actually appears, then slice from there.
+		labelIdx := strings.Index(parentText, label)
+		if labelIdx < 0 {
+			return
+		}
+		reqText := strings.TrimSpace(parentText[labelIdx+len(label):])
 		if reqText == "" {
 			return
 		}
 
-		// Parse individual course codes out of the text
+		// Truncate reqText at the start of any OTHER requisite label.
+		// Without this, a Prerequisite block whose parent contains the
+		// Antirequisite section too would cause ANTIREQ course codes to be
+		// incorrectly inserted as PREREQ rows (and vice versa).
+		for _, stopWord := range []string{
+			"Prerequisite(s):", "Corequisite(s):", "Antirequisite(s):",
+			"Prerequisite:", "Corequisite:", "Antirequisite:",
+		} {
+			// Don't truncate at our own label
+			if strings.EqualFold(stopWord, label) {
+				continue
+			}
+			if idx := strings.Index(reqText, stopWord); idx >= 0 {
+				reqText = reqText[:idx]
+			}
+		} // stopWord loop ends here — truncation is complete before regex runs
+
+		// Pre-process: strip McMaster section-variant suffixes like "A/B" or "A/B/C".
+		// These appear in two forms:
+		//   - With space:    "ENGINEER 1P13 A/B" → regex captures "1P13" correctly but leaves noise
+		//   - Without space: "ENGINEER 1P13A/B"  → regex wrongly captures "1P13A", this fixes it
+		// We find a digit followed by optional whitespace + single-letter/slash pattern
+		// and keep only the digit, discarding the section suffix.
+		reVariantSuffix := regexp.MustCompile(`([0-9])\s*(?:[A-Z]/)+[A-Z]`)
+		reqText = reVariantSuffix.ReplaceAllStringFunc(reqText, func(match string) string {
+			// Keep only the leading digit, discard the section suffix (e.g. " A/B")
+			return string(match[0])
+		})
+
+		// Parse individual course codes out of the cleaned, truncated text.
 		// Text looks like: "COMPSCI 1MD3, MATH 1B03 and STATS 2D03"
+		// This runs once per requisite section, after all truncation and cleaning.
 		codes := reCourseCode.FindAllStringSubmatch(reqText, -1)
 		for _, m := range codes {
 			results = append(results, requisiteRow{
@@ -202,7 +242,7 @@ func scrapeCourseRequisites(coid int, src courseCode) ([]requisiteRow, error) {
 				note:            "", // Note parsing can be added later if needed
 			})
 		}
-	})
+	}) // .Each() callback ends here
 
 	return results, nil
 }
