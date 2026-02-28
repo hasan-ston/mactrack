@@ -85,86 +85,91 @@ func PostUserPlanHandler(repo *Repository) http.HandlerFunc {
 	}
 }
 
-// DeleteUserPlanItemHandler serves DELETE /api/users/{id}/plan/{itemId}
-// Verifies the plan item belongs to the requested user before deleting.
+// PatchUserPlanItemHandler serves PATCH /api/users/{id}/plan/{itemId}
+// Updates the status and optionally the grade of a plan item.
+// Verifies ownership before updating.
+func PatchUserPlanItemHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 
-// GetUserValidationHandler serves GET /api/users/{id}/validation?program_id={id}
-// Loads the user's plan items and validates them against a program's requirements.
-func GetUserValidationHandler(repo *Repository, svc *Service) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        if r.Method != http.MethodGet {
-            http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-            return
-        }
+		// Expect path: /api/users/{id}/plan/{itemId}
+		path := strings.TrimPrefix(r.URL.Path, "/api/users/")
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		// parts should be: ["{id}", "plan", "{itemId}"]
+		if len(parts) != 3 || parts[1] != "plan" {
+			http.Error(w, "invalid path", http.StatusBadRequest)
+			return
+		}
 
-        // Parse user ID from path: /api/users/{id}/validation
-        idStr := strings.TrimPrefix(r.URL.Path, "/api/users/")
-        idStr = strings.TrimSuffix(idStr, "/validation")
-        userID, err := strconv.Atoi(strings.Trim(idStr, "/"))
-        if err != nil || userID == 0 {
-            http.Error(w, "invalid user id", http.StatusBadRequest)
-            return
-        }
+		userID, err := strconv.Atoi(parts[0])
+		if err != nil || userID == 0 {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+		itemID, err := strconv.Atoi(parts[2])
+		if err != nil || itemID == 0 {
+			http.Error(w, "invalid item id", http.StatusBadRequest)
+			return
+		}
 
-        // program_id is required
-        programID, err := strconv.Atoi(r.URL.Query().Get("program_id"))
-        if err != nil || programID == 0 {
-            http.Error(w, "program_id query param is required", http.StatusBadRequest)
-            return
-        }
+		// Decode request body — frontend sends status and optional grade
+		var body struct {
+			Status string  `json:"status"`
+			Grade  *string `json:"grade"` // pointer so we can distinguish "" from absent
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
 
-        // Load the program with its full requirement tree
-        program, err := repo.GetProgramWithGroups(programID)
-        if err != nil {
-            log.Printf("load program: %v", err)
-            http.Error(w, "failed to load program", http.StatusInternalServerError)
-            return
-        }
-        if program == nil {
-            http.Error(w, "program not found", http.StatusNotFound)
-            return
-        }
+		// Validate status is one of the allowed CHECK constraint values
+		allowed := map[string]bool{
+			"PLANNED": true, "IN_PROGRESS": true, "COMPLETED": true, "DROPPED": true,
+		}
+		if !allowed[body.Status] {
+			http.Error(w, "invalid status", http.StatusBadRequest)
+			return
+		}
 
-        // Load the user's plan items
-        rows, err := repo.DB.Query(`
-            SELECT pi.plan_item_id, pi.plan_term_id, pi.subject,
-                   pi.course_number, pi.status, pi.grade, pi.note
-            FROM plan_items pi
-            JOIN plan_terms pt ON pt.plan_term_id = pi.plan_term_id
-            WHERE pt.user_id = ?`, userID)
-        if err != nil {
-            http.Error(w, "failed to load plan items", http.StatusInternalServerError)
-            return
-        }
-        defer rows.Close()
+		// Verify the plan item belongs to this user
+		var ownerID int
+		err = repo.DB.QueryRow(`
+			SELECT pt.user_id FROM plan_items pi
+			JOIN plan_terms pt ON pi.plan_term_id = pt.plan_term_id
+			WHERE pi.plan_item_id = ?
+		`, itemID).Scan(&ownerID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, "failed to verify ownership", http.StatusInternalServerError)
+			return
+		}
+		if ownerID != userID {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 
-        var planItems []PlanItem
-        for rows.Next() {
-            var pi PlanItem
-            var grade, note sql.NullString
-            if err := rows.Scan(&pi.PlanItemID, &pi.PlanTermID, &pi.Subject,
-                &pi.CourseNumber, &pi.Status, &grade, &note); err != nil {
-                http.Error(w, "failed to scan plan item", http.StatusInternalServerError)
-                return
-            }
-            if grade.Valid { pi.Grade = &grade.String }
-            if note.Valid { pi.Note = &note.String }
-            planItems = append(planItems, pi)
-        }
+		// Update status and grade — grade may be NULL if not provided
+		_, err = repo.DB.Exec(`
+			UPDATE plan_items SET status = ?, grade = ? WHERE plan_item_id = ?
+		`, body.Status, body.Grade, itemID)
+		if err != nil {
+			log.Printf("failed to update plan item: %v", err)
+			http.Error(w, "failed to update plan item", http.StatusInternalServerError)
+			return
+		}
 
-        // Run validation against the existing service
-        result, err := svc.ValidatePlan(planItems, program)
-        if err != nil {
-            log.Printf("validation error: %v", err)
-            http.Error(w, "validation failed", http.StatusInternalServerError)
-            return
-        }
-
-        w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(result)
-    }
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
+// DeleteUserPlanItemHandler serves DELETE /api/users/{id}/plan/{itemId}
+// Verifies the plan item belongs to the requested user before deleting.
 func DeleteUserPlanItemHandler(repo *Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
@@ -220,6 +225,87 @@ func DeleteUserPlanItemHandler(repo *Repository) http.HandlerFunc {
 		}
 
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// GetUserValidationHandler serves GET /api/users/{id}/validation?program_id={id}
+// Loads the user's plan items and validates them against a program's requirements.
+func GetUserValidationHandler(repo *Repository, svc *Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse user ID from path: /api/users/{id}/validation
+		idStr := strings.TrimPrefix(r.URL.Path, "/api/users/")
+		idStr = strings.TrimSuffix(idStr, "/validation")
+		userID, err := strconv.Atoi(strings.Trim(idStr, "/"))
+		if err != nil || userID == 0 {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		// program_id is required
+		programID, err := strconv.Atoi(r.URL.Query().Get("program_id"))
+		if err != nil || programID == 0 {
+			http.Error(w, "program_id query param is required", http.StatusBadRequest)
+			return
+		}
+
+		// Load the program with its full requirement tree
+		program, err := repo.GetProgramWithGroups(programID)
+		if err != nil {
+			log.Printf("load program: %v", err)
+			http.Error(w, "failed to load program", http.StatusInternalServerError)
+			return
+		}
+		if program == nil {
+			http.Error(w, "program not found", http.StatusNotFound)
+			return
+		}
+
+		// Load the user's plan items
+		rows, err := repo.DB.Query(`
+            SELECT pi.plan_item_id, pi.plan_term_id, pi.subject,
+                   pi.course_number, pi.status, pi.grade, pi.note
+            FROM plan_items pi
+            JOIN plan_terms pt ON pt.plan_term_id = pi.plan_term_id
+            WHERE pt.user_id = ?`, userID)
+		if err != nil {
+			http.Error(w, "failed to load plan items", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var planItems []PlanItem
+		for rows.Next() {
+			var pi PlanItem
+			var grade, note sql.NullString
+			if err := rows.Scan(&pi.PlanItemID, &pi.PlanTermID, &pi.Subject,
+				&pi.CourseNumber, &pi.Status, &grade, &note); err != nil {
+				http.Error(w, "failed to scan plan item", http.StatusInternalServerError)
+				return
+			}
+			if grade.Valid {
+				pi.Grade = &grade.String
+			}
+			if note.Valid {
+				pi.Note = &note.String
+			}
+			planItems = append(planItems, pi)
+		}
+
+		// Run validation against the existing service
+		result, err := svc.ValidatePlan(planItems, program)
+		if err != nil {
+			log.Printf("validation error: %v", err)
+			http.Error(w, "validation failed", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
 	}
 }
 
