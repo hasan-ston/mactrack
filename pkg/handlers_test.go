@@ -242,6 +242,49 @@ func TestCoursesHandler(t *testing.T) {
 			t.Fatalf("expected limit capped at 200, got %d", resp.Limit)
 		}
 	})
+
+	t.Run("level filter narrows result set server-side", func(t *testing.T) {
+		// DB has ZZTEST/100X (1-level), ZZTEST/200X (2-level), ZZTEST/300X (3-level)
+		// from the pagination subtest above. level=1 should return only 100X.
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/courses?q=ZZTEST&level=1", nil)
+		handler.ServeHTTP(rr, req)
+		if rr.Code != 200 {
+			t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+		var resp struct {
+			Courses []Course `json:"courses"`
+			Total   int      `json:"total"`
+		}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.Total != 1 {
+			t.Fatalf("expected total=1 for level=1, got %d", resp.Total)
+		}
+		if len(resp.Courses) != 1 || resp.Courses[0].CourseNumber != "100X" {
+			t.Fatalf("expected [100X], got %+v", resp.Courses)
+		}
+	})
+
+	t.Run("term filter narrows result set server-side", func(t *testing.T) {
+		// All ZZTEST courses have term "2025"; term=2025 should return all 3.
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/courses?q=ZZTEST&term=2025", nil)
+		handler.ServeHTTP(rr, req)
+		if rr.Code != 200 {
+			t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+		var resp struct {
+			Total int `json:"total"`
+		}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.Total != 3 {
+			t.Fatalf("expected total=3 for term=2025, got %d", resp.Total)
+		}
+	})
 }
 
 func TestPostUserPlanHandler(t *testing.T) {

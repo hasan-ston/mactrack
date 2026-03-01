@@ -73,7 +73,7 @@ func TestSearchCourses_GetCourseByID_GetRequisites_GetPlanItems(t *testing.T) {
 
 	t.Run("SearchCourses finds by subject", func(t *testing.T) {
 		// limit=0 means no cap; offset=0
-		out, total, err := repo.SearchCourses("ZZTEST", 0, 0)
+		out, total, err := repo.SearchCourses("ZZTEST", "", "", 0, 0)
 		if err != nil {
 			t.Fatalf("SearchCourses: %v", err)
 		}
@@ -156,7 +156,7 @@ func TestSearchCourses_MultiToken(t *testing.T) {
 	}
 
 	t.Run("two-token AND matches subset", func(t *testing.T) {
-		out, total, err := repo.SearchCourses("ZZTEST Data", 0, 0)
+		out, total, err := repo.SearchCourses("ZZTEST Data", "", "", 0, 0)
 		if err != nil {
 			t.Fatalf("SearchCourses: %v", err)
 		}
@@ -170,7 +170,7 @@ func TestSearchCourses_MultiToken(t *testing.T) {
 	})
 
 	t.Run("two-token AND with no overlap returns 0", func(t *testing.T) {
-		out, total, err := repo.SearchCourses("ZZTEST Nonexistent", 0, 0)
+		out, total, err := repo.SearchCourses("ZZTEST Nonexistent", "", "", 0, 0)
 		if err != nil {
 			t.Fatalf("SearchCourses: %v", err)
 		}
@@ -183,7 +183,7 @@ func TestSearchCourses_MultiToken(t *testing.T) {
 	})
 
 	t.Run("single token still works", func(t *testing.T) {
-		_, total, err := repo.SearchCourses("Algorithms", 0, 0)
+		_, total, err := repo.SearchCourses("Algorithms", "", "", 0, 0)
 		if err != nil {
 			t.Fatalf("SearchCourses: %v", err)
 		}
@@ -210,7 +210,7 @@ func TestSearchCourses_Pagination(t *testing.T) {
 	}
 
 	t.Run("limit=2 offset=0 returns first 2, total=5", func(t *testing.T) {
-		out, total, err := repo.SearchCourses("PAGE", 2, 0)
+		out, total, err := repo.SearchCourses("PAGE", "", "", 2, 0)
 		if err != nil {
 			t.Fatalf("SearchCourses: %v", err)
 		}
@@ -223,7 +223,7 @@ func TestSearchCourses_Pagination(t *testing.T) {
 	})
 
 	t.Run("limit=2 offset=3 returns 2 remaining", func(t *testing.T) {
-		out, total, err := repo.SearchCourses("PAGE", 2, 3)
+		out, total, err := repo.SearchCourses("PAGE", "", "", 2, 3)
 		if err != nil {
 			t.Fatalf("SearchCourses: %v", err)
 		}
@@ -236,7 +236,7 @@ func TestSearchCourses_Pagination(t *testing.T) {
 	})
 
 	t.Run("limit=2 offset=4 returns last 1", func(t *testing.T) {
-		out, total, err := repo.SearchCourses("PAGE", 2, 4)
+		out, total, err := repo.SearchCourses("PAGE", "", "", 2, 4)
 		if err != nil {
 			t.Fatalf("SearchCourses: %v", err)
 		}
@@ -249,7 +249,7 @@ func TestSearchCourses_Pagination(t *testing.T) {
 	})
 
 	t.Run("offset past end returns 0 results, total still 5", func(t *testing.T) {
-		out, total, err := repo.SearchCourses("PAGE", 10, 10)
+		out, total, err := repo.SearchCourses("PAGE", "", "", 10, 10)
 		if err != nil {
 			t.Fatalf("SearchCourses: %v", err)
 		}
@@ -258,6 +258,84 @@ func TestSearchCourses_Pagination(t *testing.T) {
 		}
 		if len(out) != 0 {
 			t.Fatalf("expected 0 results, got %d", len(out))
+		}
+	})
+}
+
+// TestSearchCourses_LevelTermFilter verifies that level and term are applied
+// server-side so both the result slice AND total reflect the filtered set —
+// meaning pagination metadata is accurate even when filters are active.
+func TestSearchCourses_LevelTermFilter(t *testing.T) {
+	repo := newTestRepo(t)
+	defer repo.Close()
+
+	// Four courses: two 1-level, one 2-level, one 3-level; two Fall, two Winter.
+	seeds := []struct{ num, term string }{
+		{"1AA3", "2025 Fall"},
+		{"1BB3", "2025 Fall"},
+		{"2CC3", "2026 Winter"},
+		{"3DD3", "2026 Winter"},
+	}
+	for _, s := range seeds {
+		_, err := repo.DB.Exec(
+			`INSERT INTO courses(subject, course_number, course_name, professor, term)
+			 VALUES ('FILT', ?, 'Course', 'Dr X', ?)`, s.num, s.term)
+		if err != nil {
+			t.Fatalf("seed %s: %v", s.num, err)
+		}
+	}
+
+	t.Run("level=1 returns only 1xxx, total=2", func(t *testing.T) {
+		_, total, err := repo.SearchCourses("FILT", "1", "", 0, 0)
+		if err != nil {
+			t.Fatalf("SearchCourses: %v", err)
+		}
+		if total != 2 {
+			t.Fatalf("expected total=2, got %d", total)
+		}
+	})
+
+	t.Run("level=2 returns only 2xxx, total=1", func(t *testing.T) {
+		_, total, err := repo.SearchCourses("FILT", "2", "", 0, 0)
+		if err != nil {
+			t.Fatalf("SearchCourses: %v", err)
+		}
+		if total != 1 {
+			t.Fatalf("expected total=1, got %d", total)
+		}
+	})
+
+	t.Run("term=Winter returns only Winter courses, total=2", func(t *testing.T) {
+		_, total, err := repo.SearchCourses("FILT", "", "Winter", 0, 0)
+		if err != nil {
+			t.Fatalf("SearchCourses: %v", err)
+		}
+		if total != 2 {
+			t.Fatalf("expected total=2, got %d", total)
+		}
+	})
+
+	t.Run("level+term combined narrows correctly", func(t *testing.T) {
+		_, total, err := repo.SearchCourses("FILT", "3", "Winter", 0, 0)
+		if err != nil {
+			t.Fatalf("SearchCourses: %v", err)
+		}
+		if total != 1 {
+			t.Fatalf("expected total=1, got %d", total)
+		}
+	})
+
+	t.Run("pagination total reflects filtered count not raw total", func(t *testing.T) {
+		// With limit=1 offset=0 and level=1, page has 1 item but total=2
+		out, total, err := repo.SearchCourses("FILT", "1", "", 1, 0)
+		if err != nil {
+			t.Fatalf("SearchCourses: %v", err)
+		}
+		if total != 2 {
+			t.Fatalf("expected total=2 (filtered), got %d", total)
+		}
+		if len(out) != 1 {
+			t.Fatalf("expected 1 result in page, got %d", len(out))
 		}
 	})
 }

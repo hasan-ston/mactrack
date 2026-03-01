@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "react-router";
 import { Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "../components/ui/input";
@@ -66,21 +66,36 @@ export function CourseBrowser() {
   const [sortBy, setSortBy] = useState<string>("code");
   const [minRating, setMinRating] = useState<number[]>([0]);
 
-  // Reset to page 1 whenever a client-side filter changes, so the user
-  // doesn't land on an empty page after narrowing results.
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedLevel, selectedTerm, minRating]);
   const [courses, setCourses] = useState<MockCourse[]>(mockCourses);
   // Seed totalCourses with mockCourses.length so the header count is non-zero
   // before the first API response replaces it with the real backend total.
   const [totalCourses, setTotalCourses] = useState(mockCourses.length);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchCourses = useCallback((query: string, page: number) => {
-    const offset = (page - 1) * PAGE_SIZE;
-    const url = `/api/courses?q=${encodeURIComponent(query)}&limit=${PAGE_SIZE}&offset=${offset}`;
-    fetch(url)
+  // Handler functions update filter + reset page in one React 18 batch so
+  // only a single fetch fires (no double-fetch from separate page-reset effect).
+  const handleLevelChange = (level: string) => {
+    setSelectedLevel(level);
+    setCurrentPage(1);
+  };
+  const handleTermChange = (term: string) => {
+    setSelectedTerm(term);
+    setCurrentPage(1);
+  };
+
+  // Fetch courses from the server with level and term as URL params.
+  // These filters are applied in the SQL WHERE clause so the server returns
+  // the correctly-filtered total and page — not just a filtered slice of one page.
+  useEffect(() => {
+    const offset = (currentPage - 1) * PAGE_SIZE;
+    const params = new URLSearchParams();
+    params.set("q", debouncedQuery);
+    params.set("limit", String(PAGE_SIZE));
+    params.set("offset", String(offset));
+    if (selectedLevel !== "all") params.set("level", selectedLevel);
+    if (selectedTerm !== "all") params.set("term", selectedTerm);
+
+    fetch(`/api/courses?${params}`)
       .then((res) => {
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         return res.json();
@@ -110,36 +125,19 @@ export function CourseBrowser() {
         setCourses([]);
         setTotalCourses(0);
       });
-  }, []);
-
-  useEffect(() => {
-    fetchCourses(debouncedQuery, currentPage);
-  }, [debouncedQuery, currentPage, fetchCourses]);
+  }, [debouncedQuery, currentPage, selectedLevel, selectedTerm]);
 
   const totalPages = Math.max(1, Math.ceil(totalCourses / PAGE_SIZE));
 
-  // Derive which levels actually exist in the current result set
-  // e.g. if search returns no 4000-level courses, don't show that option
-  const availableLevels = useMemo(() => {
-    const levels = ["1", "2", "3", "4"];
-    return levels.filter(level =>
-      courses.some(c => c.code.split(" ")[1]?.startsWith(level[0]))
-    );
-  }, [courses]);
+  // All 4 standard course levels. Since level is now a server-side filter,
+  // we always show all options rather than deriving them from the current page.
+  const ALL_LEVELS = ["1", "2", "3", "4"];
 
-  // Filter and sort courses client-side after API fetch
+  // Client-side: sort + minimum-rating filter only.
+  // Level and term are server-side so pagination is always correct.
   const filteredCourses = useMemo(() => {
-    let filtered = courses.filter(course => {
-      // Level filter: check if course_number starts with the level's first digit
-      // e.g. "2000" level matches course codes like "2C03", "2AA3", "2EE3"
-      const courseNumber = course.code.split(" ")[1] || "";
-      const matchesLevel = selectedLevel === "all" || courseNumber.startsWith(selectedLevel[0]);
-      const matchesTerm = selectedTerm === "all" || course.term.includes(selectedTerm);
-      const matchesRating = course.averageRating >= minRating[0];
-      return matchesLevel && matchesTerm && matchesRating;
-    });
-
-    filtered.sort((a, b) => {
+    const filtered = courses.filter(course => course.averageRating >= minRating[0]);
+    return [...filtered].sort((a, b) => {
       switch (sortBy) {
         case "code":
           return a.code.localeCompare(b.code);
@@ -153,9 +151,7 @@ export function CourseBrowser() {
           return 0;
       }
     });
-
-    return filtered;
-  }, [courses, selectedLevel, selectedTerm, sortBy, minRating]);
+  }, [courses, sortBy, minRating]);
 
   return (
     <div className="space-y-6">
@@ -208,13 +204,13 @@ export function CourseBrowser() {
               <div className="space-y-6 mt-6">
                 <div className="space-y-2">
                   <Label>Level</Label>
-                  <Select value={selectedLevel} onValueChange={setSelectedLevel}>
+                  <Select value={selectedLevel} onValueChange={handleLevelChange}>
                     <SelectTrigger>
                       <SelectValue placeholder="All Levels" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Levels</SelectItem>
-                      {availableLevels.map(level => (
+                      {ALL_LEVELS.map(level => (
                         <SelectItem key={level} value={level}>{level}-level</SelectItem>
                       ))}
                     </SelectContent>
@@ -223,7 +219,7 @@ export function CourseBrowser() {
 
                 <div className="space-y-2">
                   <Label>Term</Label>
-                  <Select value={selectedTerm} onValueChange={setSelectedTerm}>
+                  <Select value={selectedTerm} onValueChange={handleTermChange}>
                     <SelectTrigger>
                       <SelectValue placeholder="All Terms" />
                     </SelectTrigger>
@@ -257,13 +253,13 @@ export function CourseBrowser() {
       <div className="hidden md:flex gap-4 p-4 bg-muted/50 rounded-lg">
         <div className="flex-1">
           <Label className="text-sm mb-2 block">Level</Label>
-          <Select value={selectedLevel} onValueChange={setSelectedLevel}>
+          <Select value={selectedLevel} onValueChange={handleLevelChange}>
             <SelectTrigger>
               <SelectValue placeholder="All Levels" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Levels</SelectItem>
-              {availableLevels.map(level => (
+              {ALL_LEVELS.map(level => (
                 <SelectItem key={level} value={level}>{level}-level</SelectItem>
               ))}
             </SelectContent>
@@ -272,7 +268,7 @@ export function CourseBrowser() {
 
         <div className="flex-1">
           <Label className="text-sm mb-2 block">Term</Label>
-          <Select value={selectedTerm} onValueChange={setSelectedTerm}>
+          <Select value={selectedTerm} onValueChange={handleTermChange}>
             <SelectTrigger>
               <SelectValue placeholder="All Terms" />
             </SelectTrigger>
@@ -304,10 +300,10 @@ export function CourseBrowser() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            {filteredCourses.length < courses.length
-              // Client-side filters narrowed the current page — be explicit about scope
-              ? `${filteredCourses.length} of ${courses.length} on this page · ${totalCourses} total`
-              // No client filters — show a clean page-range summary
+            {minRating[0] > 0 && filteredCourses.length < courses.length
+              // min-rating client filter narrowed the page — note both counts
+              ? `${filteredCourses.length} of ${totalCourses} total · page ${currentPage} of ${totalPages}`
+              // Server handles all other filters — show a clean summary
               : `${totalCourses} total${totalPages > 1 ? ` · page ${currentPage} of ${totalPages}` : ""}`
             }
           </p>

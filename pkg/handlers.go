@@ -396,13 +396,15 @@ func CourseBySubjectNumberHandler(repo *Repository) http.HandlerFunc {
 	}
 }
 
-// CoursesHandler serves GET /api/courses?q={query}&limit={n}&offset={n}
+// CoursesHandler serves GET /api/courses?q={query}&level={digit}&term={str}&limit={n}&offset={n}
 // Returns a paginated JSON envelope:
 //
 //	{ "courses": [...], "total": N, "limit": N, "offset": N }
 //
 // limit defaults to 20; callers may raise it up to maxLimit (200).
-// Multi-token search is handled by SearchCourses — spaces in q act as AND.
+// level filters by course_number prefix digit (e.g. "2" = 2000-level).
+// term filters by partial match on the term column (e.g. "Fall", "Winter").
+// Multi-token AND search is handled by SearchCourses — spaces in q act as AND.
 func CoursesHandler(repo *Repository) http.HandlerFunc {
 	const defaultLimit = 20
 	const maxLimit = 200
@@ -433,7 +435,10 @@ func CoursesHandler(repo *Repository) http.HandlerFunc {
 			}
 		}
 
-		courses, total, err := repo.SearchCourses(q, limit, offset)
+		level := r.URL.Query().Get("level")
+		term := r.URL.Query().Get("term")
+
+		courses, total, err := repo.SearchCourses(q, level, term, limit, offset)
 		if err != nil {
 			log.Printf("search courses: %v", err)
 			http.Error(w, "failed to search courses", http.StatusInternalServerError)

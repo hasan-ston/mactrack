@@ -239,9 +239,12 @@ func NewRepository(dbPath string) (*Repository, error) {
 // course_name, or professor). This lets searches like "compsci 2" or "software eng"
 // work correctly even though those strings never appear verbatim in a single column.
 //
+// level filters by the first digit of course_number (e.g. "2" = 2000-level courses).
+// term filters by partial match on the term string (e.g. "Fall", "Winter").
+// Either filter is ignored when empty or "all".
 // limit ≤ 0 means no cap (returns all matches). offset is 0-based.
 // Returns the matching page of courses plus the total number of matches.
-func (r *Repository) SearchCourses(q string, limit, offset int) ([]Course, int, error) {
+func (r *Repository) SearchCourses(q, level, term string, limit, offset int) ([]Course, int, error) {
 	tokens := strings.Fields(strings.TrimSpace(q))
 
 	// Build WHERE clause — one condition per token, all ANDed together.
@@ -253,6 +256,18 @@ func (r *Repository) SearchCourses(q string, limit, offset int) ([]Course, int, 
 		whereParts = append(whereParts,
 			"(subject LIKE ? OR course_number LIKE ? OR course_name LIKE ? OR professor LIKE ?)")
 		args = append(args, pat, pat, pat, pat)
+	}
+
+	// Level filter: course_number must start with the given digit (e.g. "2" → 2000-level).
+	if level != "" && level != "all" {
+		whereParts = append(whereParts, "course_number LIKE ?")
+		args = append(args, level+"%")
+	}
+
+	// Term filter: term string must contain the given value (e.g. "Fall", "Winter").
+	if term != "" && term != "all" {
+		whereParts = append(whereParts, "term LIKE ?")
+		args = append(args, "%"+term+"%")
 	}
 
 	where := ""
