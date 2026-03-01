@@ -12,6 +12,27 @@ import { CourseCard } from "../components/CourseCard";
 
 const PAGE_SIZE = 20;
 
+// Returns the page numbers (and "…" gap markers) to render in the pagination bar.
+// Always includes page 1, page total, and a ±2 window around current.
+// Never allocates more than 7 entries regardless of how large total is.
+function paginationRange(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+
+  const visible = new Set<number>([1, total]);
+  for (let d = -2; d <= 2; d++) {
+    const p = current + d;
+    if (p > 1 && p < total) visible.add(p);
+  }
+
+  const sorted = [...visible].sort((a, b) => a - b);
+  const result: (number | "…")[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push("…");
+    result.push(sorted[i]);
+  }
+  return result;
+}
+
 export function CourseBrowser() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -45,7 +66,9 @@ export function CourseBrowser() {
   const [sortBy, setSortBy] = useState<string>("code");
   const [minRating, setMinRating] = useState<number[]>([0]);
   const [courses, setCourses] = useState<MockCourse[]>(mockCourses);
-  const [totalCourses, setTotalCourses] = useState(0);
+  // Seed totalCourses with mockCourses.length so the header count is non-zero
+  // before the first API response replaces it with the real backend total.
+  const [totalCourses, setTotalCourses] = useState(mockCourses.length);
   const [currentPage, setCurrentPage] = useState(1);
 
   const fetchCourses = useCallback((query: string, page: number) => {
@@ -277,8 +300,12 @@ export function CourseBrowser() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {filteredCourses.length} of {totalCourses} courses
-            {totalPages > 1 && ` (page ${currentPage} of ${totalPages})`}
+            {filteredCourses.length < courses.length
+              // Client-side filters narrowed the current page — be explicit about scope
+              ? `${filteredCourses.length} of ${courses.length} on this page · ${totalCourses} total`
+              // No client filters — show a clean page-range summary
+              : `${totalCourses} total${totalPages > 1 ? ` · page ${currentPage} of ${totalPages}` : ""}`
+            }
           </p>
           {(searchQuery || selectedLevel !== "all" || selectedTerm !== "all" || minRating[0] > 0) && (
             <Button
@@ -326,29 +353,24 @@ export function CourseBrowser() {
               Previous
             </Button>
 
-            {/* Page number chips — show up to 7, with ellipsis */}
-            {Array.from({ length: totalPages }, (_, i) => i + 1)
-              .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
-              .reduce<(number | "…")[]>((acc, p, i, arr) => {
-                if (i > 0 && (p as number) - (arr[i - 1] as number) > 1) acc.push("…");
-                acc.push(p);
-                return acc;
-              }, [])
-              .map((p, i) =>
-                p === "…" ? (
-                  <span key={`ellipsis-${i}`} className="px-2 text-muted-foreground">…</span>
-                ) : (
-                  <Button
-                    key={p}
-                    variant={currentPage === p ? "default" : "outline"}
-                    size="sm"
-                    className="w-9"
-                    onClick={() => setCurrentPage(p as number)}
-                  >
-                    {p}
-                  </Button>
-                )
-              )}
+            {/* Page number chips — show first, last, and a ±2 window around
+                 currentPage. Never materialises more than 7 entries regardless
+                 of how large totalPages is. */}
+            {paginationRange(currentPage, totalPages).map((p, i) =>
+              p === "…" ? (
+                <span key={`ellipsis-${i}`} className="px-2 text-muted-foreground">…</span>
+              ) : (
+                <Button
+                  key={p}
+                  variant={currentPage === p ? "default" : "outline"}
+                  size="sm"
+                  className="w-9"
+                  onClick={() => setCurrentPage(p as number)}
+                >
+                  {p}
+                </Button>
+              )
+            )}
 
             <Button
               variant="outline"

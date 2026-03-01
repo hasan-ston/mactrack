@@ -278,9 +278,12 @@ func (r *Repository) SearchCourses(q string, limit, offset int) ([]Course, int, 
 			where)
 		pageArgs = append(pageArgs, limit, offset)
 	} else {
+		// LIMIT -1 is the SQLite sentinel for "no limit".
+		// We still pass OFFSET so callers can page with limit=0 + offset>0.
 		pageQuery = fmt.Sprintf(
-			"SELECT id, subject, course_number, course_name, professor, term FROM courses %s ORDER BY subject, course_number",
+			"SELECT id, subject, course_number, course_name, professor, term FROM courses %s ORDER BY subject, course_number LIMIT -1 OFFSET ?",
 			where)
+		pageArgs = append(pageArgs, offset)
 	}
 
 	rows, err := r.DB.Query(pageQuery, pageArgs...)

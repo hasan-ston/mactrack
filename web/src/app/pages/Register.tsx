@@ -316,10 +316,25 @@ export function Register() {
                   className={`pl-10 ${touched.password && fieldErrors.password ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                   value={password}
                   onChange={e => {
-                    setPassword(e.target.value);
-                    if (touched.password) setFieldErrors(p => ({ ...p, password: validateField("password", e.target.value) }));
-                    // Re-validate confirm too so the match error updates live
-                    if (touched.confirmPassword) setFieldErrors(p => ({ ...p, confirmPassword: e.target.value !== confirmPassword ? "Passwords do not match" : "" }));
+                    const newPwd = e.target.value;
+                    setPassword(newPwd);
+                    if (touched.password) {
+                      setFieldErrors(p => ({ ...p, password: validateField("password", newPwd) }));
+                    }
+                    // Re-validate confirm using validateField so the empty case
+                    // shows "Please confirm your password" not "Passwords do not match".
+                    // We compare against newPwd directly because the password state
+                    // hasn't updated yet (React setState is async).
+                    if (touched.confirmPassword) {
+                      setFieldErrors(p => ({
+                        ...p,
+                        confirmPassword: !confirmPassword
+                          ? "Please confirm your password"
+                          : confirmPassword !== newPwd
+                            ? "Passwords do not match"
+                            : "",
+                      }));
+                    }
                   }}
                   onBlur={e => handleBlur("password", e.target.value)}
                 />
