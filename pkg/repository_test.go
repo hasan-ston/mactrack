@@ -32,7 +32,7 @@ func newTestRepo(t *testing.T) *Repository {
 		}
 		// skip seed files, only want the schema
 		name := e.Name()
-		if strings.HasPrefix(name, "003_") || strings.HasPrefix(name, "006_") || strings.HasPrefix(name, "007_") {
+		if !strings.HasPrefix(name, "000_") {
 			continue
 		}
 		names = append(names, name)
