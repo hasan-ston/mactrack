@@ -29,5 +29,6 @@ Thumbs.db
 
 # Misc
 web/package-lock.json
+__pycache__
 database/courses.db
 codex.md
