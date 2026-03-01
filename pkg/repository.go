@@ -234,53 +234,77 @@ func NewRepository(dbPath string) (*Repository, error) {
 }
 
 // SearchCourses searches courses by subject, number, name, or professor.
-// The query is split on whitespace; every token must independently match at
-// least one of the four fields (AND semantics).  This lets users type
-// "chem 1e03" or "software eng" and get meaningful results.
-func (r *Repository) SearchCourses(q string) ([]Course, error) {
-	var rows *sql.Rows
-	var err error
+// It supports multi-token AND search: the query is split on whitespace and every
+// token must independently match at least one column (subject, course_number,
+// course_name, or professor). This lets searches like "compsci 2" or "software eng"
+// work correctly even though those strings never appear verbatim in a single column.
+//
+// Level filters by the first digit of course_number (e.g. "2" → 2000-level courses).
+// Term filters by partial match on the term string (e.g. "Fall", "Winter").
+// Either filter is ignored when empty or "all".
+// limit <= 0 means no cap (returns all matches). offset is 0-based.
+// Returns the matching page of courses plus the total number of matches.
+func (r *Repository) SearchCourses(q, level, term string, limit, offset int) ([]Course, int, error) {
+	tokens := strings.Fields(strings.TrimSpace(q))
 
-	tokens := strings.Fields(strings.ToUpper(strings.TrimSpace(q)))
+	// Build WHERE clause — one condition per token, all ANDed together.
+	// Each condition checks all four searchable columns with OR.
+	var whereParts []string
+	var args []interface{}
 
-	switch len(tokens) {
-	case 0:
-		// No search query — return all courses, no limit
-		rows, err = r.DB.Query(`
-			SELECT id, subject, course_number, course_name, professor, term
-			FROM courses
-			ORDER BY subject, course_number`)
-
-	case 1:
-		// Single token — fast path using a single OR expression
-		pattern := "%" + tokens[0] + "%"
-		rows, err = r.DB.Query(`
-			SELECT id, subject, course_number, course_name, professor, term
-			FROM courses
-			WHERE subject LIKE ? OR course_number LIKE ? OR course_name LIKE ? OR professor LIKE ?
-			ORDER BY subject, course_number
-			LIMIT 200`, pattern, pattern, pattern, pattern)
-
-	default:
-		// Multi-token: every token must match at least one field (AND across tokens)
-		// Build: WHERE (t1 matches any field) AND (t2 matches any field) AND ...
-		clauses := make([]string, len(tokens))
-		args := make([]interface{}, 0, len(tokens)*4)
-		for i, tok := range tokens {
-			p := "%" + tok + "%"
-			clauses[i] = "(subject LIKE ? OR course_number LIKE ? OR course_name LIKE ? OR professor LIKE ?)"
-			args = append(args, p, p, p, p)
-		}
-		query := fmt.Sprintf(`
-			SELECT id, subject, course_number, course_name, professor, term
-			FROM courses
-			WHERE %s
-			ORDER BY subject, course_number
-			LIMIT 200`, strings.Join(clauses, " AND "))
-		rows, err = r.DB.Query(query, args...)
+	for _, tok := range tokens {
+		pat := "%" + tok + "%"
+		whereParts = append(whereParts,
+			"(subject LIKE ? OR course_number LIKE ? OR course_name LIKE ? OR professor LIKE ?)")
+		args = append(args, pat, pat, pat, pat)
 	}
+
+	// Level filter: course number must start with the given digit (e.g. "2" → 2000-level).
+	if level != "" && level != "all" {
+		whereParts = append(whereParts, "course_number LIKE ?")
+		args = append(args, level+"%")
+	}
+
+	// Term filter: term string must contain the given value (e.g. "Fall", "Winter").
+	if term != "" && term != "all" {
+		whereParts = append(whereParts, "term LIKE ?")
+		args = append(args, "%"+term+"%")
+	}
+
+	where := ""
+	if len(whereParts) > 0 {
+		where = "WHERE " + strings.Join(whereParts, " AND ")
+	}
+
+	// Count total matches (needed for pagination controls on the frontend).
+	var total int
+	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM courses %s`, where)
+	if err := r.DB.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	// Build pagination clause.
+	// limit <= 0 uses LIMIT -1 (SQLite no-limit sentinel) so offset is still honoured.
+	var limitClause string
+	paginationArgs := append([]interface{}{}, args...)
+	if limit > 0 {
+		limitClause = "LIMIT ? OFFSET ?"
+		paginationArgs = append(paginationArgs, limit, offset)
+	} else {
+		limitClause = "LIMIT -1 OFFSET ?"
+		paginationArgs = append(paginationArgs, offset)
+	}
+
+	dataQuery := fmt.Sprintf(`
+		SELECT id, subject, course_number, course_name, professor, term
+		FROM courses
+		%s
+		ORDER BY subject, course_number
+		%s`, where, limitClause)
+
+	rows, err := r.DB.Query(dataQuery, paginationArgs...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -289,13 +313,13 @@ func (r *Repository) SearchCourses(q string) ([]Course, error) {
 		var c Course
 		var courseName, professor sql.NullString
 		if err := rows.Scan(&c.ID, &c.Subject, &c.CourseNumber, &courseName, &professor, &c.Term); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		c.CourseName = courseName.String
 		c.Professor = professor.String
 		out = append(out, c)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
 }
 
 // GetCourseByID fetches a single course by id.

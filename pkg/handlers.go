@@ -396,8 +396,11 @@ func CourseBySubjectNumberHandler(repo *Repository) http.HandlerFunc {
 	}
 }
 
-// CoursesHandler serves GET /api/courses?q={query}
-// Returns all courses matching the search query via SearchCourses.
+// CoursesHandler serves GET /api/courses?q=&level=&term=&limit=N&offset=N
+// Returns a paginated envelope: { courses, total, limit, offset }.
+// level filters by the first digit of course_number (e.g. "2" → 2000-level).
+// term filters by partial match on the term string (e.g. "Fall", "Winter").
+// Default limit is 50; pass limit=0 to return all matches.
 func CoursesHandler(repo *Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -406,18 +409,38 @@ func CoursesHandler(repo *Repository) http.HandlerFunc {
 		}
 
 		q := r.URL.Query().Get("q")
-		courses, err := repo.SearchCourses(q)
+		level := r.URL.Query().Get("level")
+		term := r.URL.Query().Get("term")
+
+		limit := 50
+		if lStr := r.URL.Query().Get("limit"); lStr != "" {
+			if n, err := strconv.Atoi(lStr); err == nil {
+				limit = n
+			}
+		}
+		offset := 0
+		if oStr := r.URL.Query().Get("offset"); oStr != "" {
+			if n, err := strconv.Atoi(oStr); err == nil {
+				offset = n
+			}
+		}
+
+		courses, total, err := repo.SearchCourses(q, level, term, limit, offset)
 		if err != nil {
 			http.Error(w, "failed to search courses", http.StatusInternalServerError)
 			return
 		}
-		// Return empty array instead of null when no results
 		if courses == nil {
 			courses = []Course{}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(courses)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"courses": courses,
+			"total":   total,
+			"limit":   limit,
+			"offset":  offset,
+		})
 	}
 }
 

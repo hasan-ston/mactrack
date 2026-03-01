@@ -40,8 +40,9 @@ export function CourseBrowser() {
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         return res.json();
       })
-      .then((data: any[]) => {
-        const safeData = data || [];
+      .then((data: any) => {
+        // Handle both bare array (legacy) and paginated envelope { courses: [...] }
+        const safeData: any[] = Array.isArray(data) ? data : (data?.courses ?? []);
         const mapped: MockCourse[] = safeData.map((c) => ({
           id: String(c.id),
           code: `${c.subject} ${c.course_number}`,
