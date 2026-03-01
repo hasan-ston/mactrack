@@ -21,7 +21,7 @@ jobs:
           go-version: '1.24'
 
       - name: Run Go tests
-        run: go test -race -coverprofile=coverage.out ./...
+        run: go test -race -timeout 3m -coverprofile=coverage.out ./...
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

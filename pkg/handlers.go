@@ -396,9 +396,19 @@ func CourseBySubjectNumberHandler(repo *Repository) http.HandlerFunc {
 	}
 }
 
-// CoursesHandler serves GET /api/courses?q={query}
-// Returns all courses matching the search query via SearchCourses.
+// CoursesHandler serves GET /api/courses?q={query}&level={digit}&term={str}&limit={n}&offset={n}
+// Returns a paginated JSON envelope:
+//
+//	{ "courses": [...], "total": N, "limit": N, "offset": N }
+//
+// limit defaults to 20; callers may raise it up to maxLimit (200).
+// level filters by course_number prefix digit (e.g. "2" = 2000-level).
+// term filters by partial match on the term column (e.g. "Fall", "Winter").
+// Multi-token AND search is handled by SearchCourses — spaces in q act as AND.
 func CoursesHandler(repo *Repository) http.HandlerFunc {
+	const defaultLimit = 20
+	const maxLimit = 200
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -406,8 +416,31 @@ func CoursesHandler(repo *Repository) http.HandlerFunc {
 		}
 
 		q := r.URL.Query().Get("q")
-		courses, err := repo.SearchCourses(q)
+
+		// Default page size = 20; callers may override with ?limit=N
+		// Capped at 200 to prevent abuse on this public endpoint.
+		limit := defaultLimit
+		if lStr := r.URL.Query().Get("limit"); lStr != "" {
+			if l, err := strconv.Atoi(lStr); err == nil && l > 0 {
+				limit = l
+			}
+		}
+		if limit > maxLimit {
+			limit = maxLimit
+		}
+		offset := 0
+		if oStr := r.URL.Query().Get("offset"); oStr != "" {
+			if o, err := strconv.Atoi(oStr); err == nil && o >= 0 {
+				offset = o
+			}
+		}
+
+		level := r.URL.Query().Get("level")
+		term := r.URL.Query().Get("term")
+
+		courses, total, err := repo.SearchCourses(q, level, term, limit, offset)
 		if err != nil {
+			log.Printf("search courses: %v", err)
 			http.Error(w, "failed to search courses", http.StatusInternalServerError)
 			return
 		}
@@ -417,7 +450,12 @@ func CoursesHandler(repo *Repository) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(courses)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"courses": courses,
+			"total":   total,
+			"limit":   limit,
+			"offset":  offset,
+		})
 	}
 }
 
