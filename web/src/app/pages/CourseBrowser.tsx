@@ -13,8 +13,8 @@ import { CourseCard } from "../components/CourseCard";
 const PAGE_SIZE = 20;
 
 // Returns the page numbers (and "…" gap markers) to render in the pagination bar.
-// Always includes page 1, page total, and a ±2 window around current.
-// Never allocates more than 7 entries regardless of how large total is.
+// Always includes page 1, page total, and a ±2 window around the current page.
+// May insert "…" markers to represent gaps between non-contiguous page ranges.
 function paginationRange(current: number, total: number): (number | "…")[] {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
 
@@ -65,6 +65,12 @@ export function CourseBrowser() {
   const [selectedTerm, setSelectedTerm] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("code");
   const [minRating, setMinRating] = useState<number[]>([0]);
+
+  // Reset to page 1 whenever a client-side filter changes, so the user
+  // doesn't land on an empty page after narrowing results.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedLevel, selectedTerm, minRating]);
   const [courses, setCourses] = useState<MockCourse[]>(mockCourses);
   // Seed totalCourses with mockCourses.length so the header count is non-zero
   // before the first API response replaces it with the real backend total.
@@ -98,8 +104,6 @@ export function CourseBrowser() {
         }));
         setCourses(mapped);
         setTotalCourses(data?.total ?? 0);
-        // Reset level filter when a new search runs so results aren't hidden
-        setSelectedLevel("all");
       })
       .catch((err) => {
         console.error("Failed to fetch courses:", err);
@@ -354,8 +358,7 @@ export function CourseBrowser() {
             </Button>
 
             {/* Page number chips — show first, last, and a ±2 window around
-                 currentPage. Never materialises more than 7 entries regardless
-                 of how large totalPages is. */}
+                 currentPage. May insert "…" gap markers for non-contiguous ranges. */}
             {paginationRange(currentPage, totalPages).map((p, i) =>
               p === "…" ? (
                 <span key={`ellipsis-${i}`} className="px-2 text-muted-foreground">…</span>

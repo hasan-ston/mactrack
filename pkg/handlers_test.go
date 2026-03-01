@@ -159,6 +159,89 @@ func TestCoursesHandler(t *testing.T) {
 			t.Fatalf("expected 405, got %d", rr.Code)
 		}
 	})
+
+	t.Run("pagination metadata is returned correctly", func(t *testing.T) {
+		// Seed two more courses so we have 3 total for ZZTEST
+		for _, num := range []string{"200X", "300X"} {
+			_, err := repo.DB.Exec(`INSERT INTO courses(subject, course_number, course_name, professor, term) VALUES ('ZZTEST', ?, 'Another', 'Dr Y', '2025')`, num)
+			if err != nil {
+				t.Fatalf("seed extra course %s: %v", num, err)
+			}
+		}
+
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/courses?q=ZZTEST&limit=1&offset=0", nil)
+		handler.ServeHTTP(rr, req)
+		if rr.Code != 200 {
+			t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+		var resp struct {
+			Courses []Course `json:"courses"`
+			Total   int      `json:"total"`
+			Limit   int      `json:"limit"`
+			Offset  int      `json:"offset"`
+		}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.Total != 3 {
+			t.Fatalf("expected total=3, got %d", resp.Total)
+		}
+		if resp.Limit != 1 {
+			t.Fatalf("expected limit=1, got %d", resp.Limit)
+		}
+		if resp.Offset != 0 {
+			t.Fatalf("expected offset=0, got %d", resp.Offset)
+		}
+		if len(resp.Courses) != 1 {
+			t.Fatalf("expected 1 course in page, got %d", len(resp.Courses))
+		}
+	})
+
+	t.Run("offset=1 returns second page", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/courses?q=ZZTEST&limit=1&offset=1", nil)
+		handler.ServeHTTP(rr, req)
+		if rr.Code != 200 {
+			t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+		var resp struct {
+			Courses []Course `json:"courses"`
+			Total   int      `json:"total"`
+			Limit   int      `json:"limit"`
+			Offset  int      `json:"offset"`
+		}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.Offset != 1 {
+			t.Fatalf("expected offset=1, got %d", resp.Offset)
+		}
+		if len(resp.Courses) != 1 {
+			t.Fatalf("expected 1 course in page, got %d", len(resp.Courses))
+		}
+		if resp.Total != 3 {
+			t.Fatalf("expected total=3 (full match count), got %d", resp.Total)
+		}
+	})
+
+	t.Run("limit is capped at 200", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/courses?limit=9999", nil)
+		handler.ServeHTTP(rr, req)
+		if rr.Code != 200 {
+			t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+		var resp struct {
+			Limit int `json:"limit"`
+		}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.Limit != 200 {
+			t.Fatalf("expected limit capped at 200, got %d", resp.Limit)
+		}
+	})
 }
 
 func TestPostUserPlanHandler(t *testing.T) {

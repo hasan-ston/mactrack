@@ -169,6 +169,24 @@ export function Register() {
 
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+  // Compute a 0-4 password strength score for the live indicator bar.
+  function passwordStrength(pwd: string): { score: number; label: string; color: string } {
+    if (!pwd) return { score: 0, label: "", color: "" };
+    let score = 0;
+    if (pwd.length >= 8) score++;
+    if (pwd.length >= 12) score++;
+    if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score++;
+    if (/\d/.test(pwd)) score++;
+    if (/[^A-Za-z0-9]/.test(pwd)) score++;
+    // Clamp to 4 max for the bar
+    score = Math.min(score, 4);
+    const labels = ["", "Weak", "Fair", "Good", "Strong"];
+    const colors = ["", "bg-red-500", "bg-orange-400", "bg-yellow-400", "bg-green-500"];
+    return { score, label: labels[score], color: colors[score] };
+  }
+
+  const strength = passwordStrength(password);
+
   function validateField(field: string, value: string): string {
     switch (field) {
       case "name":
@@ -187,6 +205,9 @@ export function Register() {
         if (!value) return "Please confirm your password";
         if (value !== password) return "Passwords do not match";
         return "";
+      case "year":
+        if (!value) return "Please select a year of study";
+        return "";
       default:
         return "";
     }
@@ -202,14 +223,14 @@ export function Register() {
     setError("");
 
     // Validate all fields at once; mark them all touched so errors show
-    const fields = { name, email, password, confirmPassword };
+    const fields = { name, email, password, confirmPassword, year };
     const errors: Record<string, string> = {};
     for (const [field, value] of Object.entries(fields)) {
       const msg = validateField(field, value);
       if (msg) errors[field] = msg;
     }
     setFieldErrors(errors);
-    setTouched({ name: true, email: true, password: true, confirmPassword: true });
+    setTouched({ name: true, email: true, password: true, confirmPassword: true, year: true });
     if (Object.keys(errors).length > 0) return;
 
     setLoading(true);
@@ -290,8 +311,15 @@ export function Register() {
             {/* Year of study */}
             <div className="space-y-2">
               <Label htmlFor="year">Year of Study</Label>
-              <Select value={year} onValueChange={setYear}>
-                <SelectTrigger>
+              <Select
+                value={year}
+                onValueChange={(v) => {
+                  setYear(v);
+                  setTouched(prev => ({ ...prev, year: true }));
+                  setFieldErrors(prev => ({ ...prev, year: validateField("year", v) }));
+                }}
+              >
+                <SelectTrigger className={touched.year && fieldErrors.year ? "border-red-500 focus:ring-red-500" : ""}>
                   <SelectValue placeholder="Select year" />
                 </SelectTrigger>
                 <SelectContent>
@@ -302,6 +330,9 @@ export function Register() {
                   <SelectItem value="5">5th Year+</SelectItem>
                 </SelectContent>
               </Select>
+              {touched.year && fieldErrors.year && (
+                <p className="text-xs text-red-500">{fieldErrors.year}</p>
+              )}
             </div>
 
             {/* Password */}
@@ -343,6 +374,22 @@ export function Register() {
                 ? <p className="text-xs text-red-500">{fieldErrors.password}</p>
                 : <p className="text-xs text-muted-foreground">Minimum 8 characters</p>
               }
+              {/* Password strength indicator */}
+              {password.length > 0 && (
+                <div className="space-y-1">
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4].map(level => (
+                      <div
+                        key={level}
+                        className={`h-1.5 flex-1 rounded-full transition-colors ${
+                          level <= strength.score ? strength.color : "bg-muted"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{strength.label}</p>
+                </div>
+              )}
             </div>
 
             {/* Confirm password */}

@@ -401,9 +401,12 @@ func CourseBySubjectNumberHandler(repo *Repository) http.HandlerFunc {
 //
 //	{ "courses": [...], "total": N, "limit": N, "offset": N }
 //
-// limit defaults to 50; pass limit=0 to get all results (no cap).
+// limit defaults to 20; callers may raise it up to maxLimit (200).
 // Multi-token search is handled by SearchCourses — spaces in q act as AND.
 func CoursesHandler(repo *Repository) http.HandlerFunc {
+	const defaultLimit = 20
+	const maxLimit = 200
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -412,12 +415,16 @@ func CoursesHandler(repo *Repository) http.HandlerFunc {
 
 		q := r.URL.Query().Get("q")
 
-		// Default page size = 50; callers may override with ?limit=N
-		limit := 50
+		// Default page size = 20; callers may override with ?limit=N
+		// Capped at 200 to prevent abuse on this public endpoint.
+		limit := defaultLimit
 		if lStr := r.URL.Query().Get("limit"); lStr != "" {
-			if l, err := strconv.Atoi(lStr); err == nil && l >= 0 {
+			if l, err := strconv.Atoi(lStr); err == nil && l > 0 {
 				limit = l
 			}
+		}
+		if limit > maxLimit {
+			limit = maxLimit
 		}
 		offset := 0
 		if oStr := r.URL.Query().Get("offset"); oStr != "" {

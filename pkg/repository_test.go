@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -128,6 +129,135 @@ func TestSearchCourses_GetCourseByID_GetRequisites_GetPlanItems(t *testing.T) {
 		}
 		if items[0].Subject != "ZZTEST" {
 			t.Fatalf("unexpected plan item: %+v", items[0])
+		}
+	})
+}
+
+// TestSearchCourses_MultiToken exercises the multi-token AND search that was
+// added in the pagination PR. "ZZTEST Data" must match a row whose subject
+// contains "ZZTEST" AND whose course_name contains "Data", while "ZZTEST
+// Nonexistent" should return zero results because only one token matches.
+func TestSearchCourses_MultiToken(t *testing.T) {
+	repo := newTestRepo(t)
+	defer repo.Close()
+
+	// Seed three courses in the same subject but with different names.
+	for _, c := range []struct{ num, name string }{
+		{"100X", "Data Structures"},
+		{"200X", "Algorithms"},
+		{"300X", "Data Science"},
+	} {
+		_, err := repo.DB.Exec(
+			`INSERT INTO courses(subject, course_number, course_name, professor, term)
+			 VALUES ('ZZTEST', ?, ?, 'Dr X', '2025')`, c.num, c.name)
+		if err != nil {
+			t.Fatalf("seed %s: %v", c.num, err)
+		}
+	}
+
+	t.Run("two-token AND matches subset", func(t *testing.T) {
+		out, total, err := repo.SearchCourses("ZZTEST Data", 0, 0)
+		if err != nil {
+			t.Fatalf("SearchCourses: %v", err)
+		}
+		// "Data Structures" and "Data Science" match; "Algorithms" does not.
+		if total != 2 {
+			t.Fatalf("expected total=2, got %d", total)
+		}
+		if len(out) != 2 {
+			t.Fatalf("expected 2 results, got %d", len(out))
+		}
+	})
+
+	t.Run("two-token AND with no overlap returns 0", func(t *testing.T) {
+		out, total, err := repo.SearchCourses("ZZTEST Nonexistent", 0, 0)
+		if err != nil {
+			t.Fatalf("SearchCourses: %v", err)
+		}
+		if total != 0 {
+			t.Fatalf("expected total=0, got %d", total)
+		}
+		if len(out) != 0 {
+			t.Fatalf("expected 0 results, got %d", len(out))
+		}
+	})
+
+	t.Run("single token still works", func(t *testing.T) {
+		_, total, err := repo.SearchCourses("Algorithms", 0, 0)
+		if err != nil {
+			t.Fatalf("SearchCourses: %v", err)
+		}
+		if total != 1 {
+			t.Fatalf("expected total=1, got %d", total)
+		}
+	})
+}
+
+// TestSearchCourses_Pagination verifies that limit and offset control the
+// result window while total always reflects the full match count.
+func TestSearchCourses_Pagination(t *testing.T) {
+	repo := newTestRepo(t)
+	defer repo.Close()
+
+	// Seed 5 courses
+	for i := 1; i <= 5; i++ {
+		_, err := repo.DB.Exec(
+			`INSERT INTO courses(subject, course_number, course_name, professor, term)
+			 VALUES ('PAGE', ?, 'Course', 'Dr X', '2025')`, fmt.Sprintf("%dXX", i))
+		if err != nil {
+			t.Fatalf("seed course %d: %v", i, err)
+		}
+	}
+
+	t.Run("limit=2 offset=0 returns first 2, total=5", func(t *testing.T) {
+		out, total, err := repo.SearchCourses("PAGE", 2, 0)
+		if err != nil {
+			t.Fatalf("SearchCourses: %v", err)
+		}
+		if total != 5 {
+			t.Fatalf("expected total=5, got %d", total)
+		}
+		if len(out) != 2 {
+			t.Fatalf("expected 2 results, got %d", len(out))
+		}
+	})
+
+	t.Run("limit=2 offset=3 returns 2 remaining", func(t *testing.T) {
+		out, total, err := repo.SearchCourses("PAGE", 2, 3)
+		if err != nil {
+			t.Fatalf("SearchCourses: %v", err)
+		}
+		if total != 5 {
+			t.Fatalf("expected total=5, got %d", total)
+		}
+		if len(out) != 2 {
+			t.Fatalf("expected 2 results, got %d", len(out))
+		}
+	})
+
+	t.Run("limit=2 offset=4 returns last 1", func(t *testing.T) {
+		out, total, err := repo.SearchCourses("PAGE", 2, 4)
+		if err != nil {
+			t.Fatalf("SearchCourses: %v", err)
+		}
+		if total != 5 {
+			t.Fatalf("expected total=5, got %d", total)
+		}
+		if len(out) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(out))
+		}
+	})
+
+	t.Run("offset past end returns 0 results, total still 5", func(t *testing.T) {
+		out, total, err := repo.SearchCourses("PAGE", 10, 10)
+		if err != nil {
+			t.Fatalf("SearchCourses: %v", err)
+		}
+		if total != 5 {
+			t.Fatalf("expected total=5, got %d", total)
+		}
+		if len(out) != 0 {
+			t.Fatalf("expected 0 results, got %d", len(out))
 		}
 	})
 }
