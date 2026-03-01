@@ -234,25 +234,50 @@ func NewRepository(dbPath string) (*Repository, error) {
 }
 
 // SearchCourses searches courses by subject, number, name, or professor.
+// The query is split on whitespace; every token must independently match at
+// least one of the four fields (AND semantics).  This lets users type
+// "chem 1e03" or "software eng" and get meaningful results.
 func (r *Repository) SearchCourses(q string) ([]Course, error) {
 	var rows *sql.Rows
 	var err error
 
-	if q == "" {
+	tokens := strings.Fields(strings.ToUpper(strings.TrimSpace(q)))
+
+	switch len(tokens) {
+	case 0:
 		// No search query — return all courses, no limit
 		rows, err = r.DB.Query(`
 			SELECT id, subject, course_number, course_name, professor, term
 			FROM courses
 			ORDER BY subject, course_number`)
-	} else {
-		// Search query — limit to 200 results to keep responses fast
-		pattern := "%" + q + "%"
+
+	case 1:
+		// Single token — fast path using a single OR expression
+		pattern := "%" + tokens[0] + "%"
 		rows, err = r.DB.Query(`
 			SELECT id, subject, course_number, course_name, professor, term
 			FROM courses
 			WHERE subject LIKE ? OR course_number LIKE ? OR course_name LIKE ? OR professor LIKE ?
 			ORDER BY subject, course_number
 			LIMIT 200`, pattern, pattern, pattern, pattern)
+
+	default:
+		// Multi-token: every token must match at least one field (AND across tokens)
+		// Build: WHERE (t1 matches any field) AND (t2 matches any field) AND ...
+		clauses := make([]string, len(tokens))
+		args := make([]interface{}, 0, len(tokens)*4)
+		for i, tok := range tokens {
+			p := "%" + tok + "%"
+			clauses[i] = "(subject LIKE ? OR course_number LIKE ? OR course_name LIKE ? OR professor LIKE ?)"
+			args = append(args, p, p, p, p)
+		}
+		query := fmt.Sprintf(`
+			SELECT id, subject, course_number, course_name, professor, term
+			FROM courses
+			WHERE %s
+			ORDER BY subject, course_number
+			LIMIT 200`, strings.Join(clauses, " AND "))
+		rows, err = r.DB.Query(query, args...)
 	}
 	if err != nil {
 		return nil, err

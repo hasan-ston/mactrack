@@ -104,14 +104,19 @@ export function DegreePlanner() {
   // Course search — debounced
   const searchCourses = useCallback((q: string) => {
     setSearchLoading(true);
-    fetch(`/api/courses?q=${encodeURIComponent(q)}`)
+    fetch(`/api/courses?q=${encodeURIComponent(q.trim())}`)
       .then(res => res.json())
-      .then((data: APICourse[]) => {
+      .then((data: APICourse[] | { courses: APICourse[] }) => {
+        // Support both the bare-array response (main) and the paginated
+        // envelope { courses: [...] } response (feature/search-pagination-*)
+        const list: APICourse[] = Array.isArray(data)
+          ? data
+          : (data as { courses: APICourse[] }).courses ?? [];
         const plannedKeys = new Set(
           planItems.map(pi => `${pi.subject}-${pi.course_number}`)
         );
         setSearchResults(
-          (data ?? []).filter(c => !plannedKeys.has(`${c.subject}-${c.course_number}`))
+          list.filter(c => !plannedKeys.has(`${c.subject}-${c.course_number}`))
         );
       })
       .catch(() => setSearchResults([]))

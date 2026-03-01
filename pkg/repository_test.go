@@ -104,6 +104,31 @@ func TestSearchCourses_GetCourseByID_GetRequisites_GetPlanItems(t *testing.T) {
 		}
 	})
 
+	t.Run("SearchCourses multi-token AND — subject + course number", func(t *testing.T) {
+		// "zztest 100x" → token "ZZTEST" matches subject, token "100X" matches course_number
+		out, err := repo.SearchCourses("zztest 100x")
+		if err != nil {
+			t.Fatalf("SearchCourses multi-token: %v", err)
+		}
+		if len(out) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(out))
+		}
+		if out[0].Subject != "ZZTEST" {
+			t.Fatalf("unexpected row: %+v", out[0])
+		}
+	})
+
+	t.Run("SearchCourses multi-token AND — no overlap returns 0", func(t *testing.T) {
+		// "zztest nomatch" → "zztest" matches subject but "nomatch" matches nothing
+		out, err := repo.SearchCourses("zztest nomatch")
+		if err != nil {
+			t.Fatalf("SearchCourses multi-token nomatch: %v", err)
+		}
+		if len(out) != 0 {
+			t.Fatalf("expected 0 results, got %d", len(out))
+		}
+	})
+
 	t.Run("GetCourseByID happy + not found", func(t *testing.T) {
 		c, err := repo.GetCourseByID(int(courseID))
 		if err != nil {
