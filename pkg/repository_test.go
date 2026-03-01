@@ -4,52 +4,31 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// sets up a test database
+// sets up a test database using the DDL-only schema fixture.
+// We deliberately do NOT load the bulk-seed migrations (000_baseline.sql
+// has 29 000+ lines of INSERT statements) so that each test starts in
+// milliseconds even under -race/-cover.
 func newTestRepo(t *testing.T) *Repository {
+	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
 
-	migDir := filepath.Join("..", "migrations")
-	entries, err := os.ReadDir(migDir)
+	schemaPath := filepath.Join("..", "migrations", "schema_test.sql")
+	b, err := os.ReadFile(schemaPath)
 	if err != nil {
 		db.Close()
-		t.Fatalf("read migrations: %v", err)
+		t.Fatalf("read schema_test.sql: %v", err)
 	}
-
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		// skip seed files, only want the schema
-		name := e.Name()
-		if !strings.HasPrefix(name, "000_") {
-			continue
-		}
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	for _, n := range names {
-		p := filepath.Join(migDir, n)
-		b, err := os.ReadFile(p)
-		if err != nil {
-			db.Close()
-			t.Fatalf("read migration %s: %v", p, err)
-		}
-		if _, err := db.Exec(string(b)); err != nil {
-			db.Close()
-			t.Fatalf("exec migration %s: %v", n, err)
-		}
+	if _, err := db.Exec(string(b)); err != nil {
+		db.Close()
+		t.Fatalf("exec schema_test.sql: %v", err)
 	}
 
 	return &Repository{DB: db}
