@@ -101,17 +101,19 @@ export function DegreePlanner() {
       .finally(() => setPlanLoading(false));
   }, [user]);
 
-  // Course search — debounced
+  // Course search — debounced; uses limit=50 since results are shown in a dialog
+  // The multi-token backend search means "compsci 2" or "software eng" work correctly.
   const searchCourses = useCallback((q: string) => {
     setSearchLoading(true);
-    fetch(`/api/courses?q=${encodeURIComponent(q)}`)
+    fetch(`/api/courses?q=${encodeURIComponent(q)}&limit=50`)
       .then(res => res.json())
-      .then((data: APICourse[]) => {
+      .then((data: { courses: APICourse[]; total: number }) => {
+        const results = data?.courses ?? [];
         const plannedKeys = new Set(
           planItems.map(pi => `${pi.subject}-${pi.course_number}`)
         );
         setSearchResults(
-          (data ?? []).filter(c => !plannedKeys.has(`${c.subject}-${c.course_number}`))
+          results.filter(c => !plannedKeys.has(`${c.subject}-${c.course_number}`))
         );
       })
       .catch(() => setSearchResults([]))
@@ -253,8 +255,10 @@ export function DegreePlanner() {
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                   </div>
                 ) : searchResults.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    {searchQuery ? "No courses found" : "Start typing to search courses"}
+                  <p className="text-center text-muted-foreground py-8 text-sm">
+                    {searchQuery
+                      ? "No courses found — try a shorter search (e.g. \"COMPSCI 2\" or \"software\")"
+                      : "Start typing to search courses"}
                   </p>
                 ) : (
                   searchResults.map(course => (

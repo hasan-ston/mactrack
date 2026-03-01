@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useLocation } from "react-router";
-import { Search, Filter, SlidersHorizontal } from "lucide-react";
+import { Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -10,8 +10,11 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { courses as mockCourses, Course as MockCourse } from "../data/mockData";
 import { CourseCard } from "../components/CourseCard";
 
+const PAGE_SIZE = 20;
+
 export function CourseBrowser() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const location = useLocation();
 
   // Initialize search query from URL `?search=` param so direct links and
@@ -21,27 +24,40 @@ export function CourseBrowser() {
       const params = new URLSearchParams(location.search || "");
       const q = params.get("search") || "";
       setSearchQuery(q);
+      setDebouncedQuery(q);
     } catch (e) {
       // ignore malformed URLSearchParams
     }
   }, [location.search]);
+
+  // Debounce search input — wait 300 ms before sending to the API
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+      setCurrentPage(1); // reset to first page on new search
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   // selectedLevel holds "1000", "2000", "3000", "4000", or "all"
   const [selectedLevel, setSelectedLevel] = useState<string>("all");
   const [selectedTerm, setSelectedTerm] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("code");
   const [minRating, setMinRating] = useState<number[]>([0]);
   const [courses, setCourses] = useState<MockCourse[]>(mockCourses);
+  const [totalCourses, setTotalCourses] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  useEffect(() => {
-    // Fetch from backend API; map DB courses to mock shape with sensible defaults
-    const q = encodeURIComponent(searchQuery);
-    fetch(`/api/courses?q=${q}`)
+  const fetchCourses = useCallback((query: string, page: number) => {
+    const offset = (page - 1) * PAGE_SIZE;
+    const url = `/api/courses?q=${encodeURIComponent(query)}&limit=${PAGE_SIZE}&offset=${offset}`;
+    fetch(url)
       .then((res) => {
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         return res.json();
       })
-      .then((data: any[]) => {
-        const safeData = data || [];
+      .then((data: { courses: any[]; total: number }) => {
+        const safeData = data?.courses || [];
         const mapped: MockCourse[] = safeData.map((c) => ({
           id: String(c.id),
           code: `${c.subject} ${c.course_number}`,
@@ -58,15 +74,22 @@ export function CourseBrowser() {
           classAverage: 0,
         }));
         setCourses(mapped);
+        setTotalCourses(data?.total ?? 0);
         // Reset level filter when a new search runs so results aren't hidden
         setSelectedLevel("all");
       })
       .catch((err) => {
         console.error("Failed to fetch courses:", err);
-        // Clear courses so mock data doesn't mask the failure
         setCourses([]);
+        setTotalCourses(0);
       });
-  }, [searchQuery]);
+  }, []);
+
+  useEffect(() => {
+    fetchCourses(debouncedQuery, currentPage);
+  }, [debouncedQuery, currentPage, fetchCourses]);
+
+  const totalPages = Math.max(1, Math.ceil(totalCourses / PAGE_SIZE));
 
   // Derive which levels actually exist in the current result set
   // e.g. if search returns no 4000-level courses, don't show that option
@@ -80,20 +103,13 @@ export function CourseBrowser() {
   // Filter and sort courses client-side after API fetch
   const filteredCourses = useMemo(() => {
     let filtered = courses.filter(course => {
-      const matchesSearch = searchQuery === "" ||
-        course.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        course.description.toLowerCase().includes(searchQuery.toLowerCase());
-
       // Level filter: check if course_number starts with the level's first digit
       // e.g. "2000" level matches course codes like "2C03", "2AA3", "2EE3"
       const courseNumber = course.code.split(" ")[1] || "";
       const matchesLevel = selectedLevel === "all" || courseNumber.startsWith(selectedLevel[0]);
-
       const matchesTerm = selectedTerm === "all" || course.term.includes(selectedTerm);
       const matchesRating = course.averageRating >= minRating[0];
-
-      return matchesSearch && matchesLevel && matchesTerm && matchesRating;
+      return matchesLevel && matchesTerm && matchesRating;
     });
 
     filtered.sort((a, b) => {
@@ -112,7 +128,7 @@ export function CourseBrowser() {
     });
 
     return filtered;
-  }, [courses, searchQuery, selectedLevel, selectedTerm, sortBy, minRating]);
+  }, [courses, selectedLevel, selectedTerm, sortBy, minRating]);
 
   return (
     <div className="space-y-6">
@@ -120,7 +136,7 @@ export function CourseBrowser() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Browse Courses</h1>
         <p className="text-muted-foreground mt-1">
-          Explore {courses.length} courses available at McMaster University
+          Explore {totalCourses} courses available at McMaster University
         </p>
       </div>
 
@@ -261,7 +277,8 @@ export function CourseBrowser() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {filteredCourses.length} of {courses.length} courses
+            Showing {filteredCourses.length} of {totalCourses} courses
+            {totalPages > 1 && ` (page ${currentPage} of ${totalPages})`}
           </p>
           {(searchQuery || selectedLevel !== "all" || selectedTerm !== "all" || minRating[0] > 0) && (
             <Button
@@ -272,6 +289,7 @@ export function CourseBrowser() {
                 setSelectedLevel("all");
                 setSelectedTerm("all");
                 setMinRating([0]);
+                setCurrentPage(1);
               }}
             >
               Clear Filters
@@ -292,6 +310,55 @@ export function CourseBrowser() {
             {filteredCourses.map(course => (
               <CourseCard key={course.id} course={course} />
             ))}
+          </div>
+        )}
+
+        {/* Pagination controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Previous
+            </Button>
+
+            {/* Page number chips — show up to 7, with ellipsis */}
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+              .reduce<(number | "…")[]>((acc, p, i, arr) => {
+                if (i > 0 && (p as number) - (arr[i - 1] as number) > 1) acc.push("…");
+                acc.push(p);
+                return acc;
+              }, [])
+              .map((p, i) =>
+                p === "…" ? (
+                  <span key={`ellipsis-${i}`} className="px-2 text-muted-foreground">…</span>
+                ) : (
+                  <Button
+                    key={p}
+                    variant={currentPage === p ? "default" : "outline"}
+                    size="sm"
+                    className="w-9"
+                    onClick={() => setCurrentPage(p as number)}
+                  >
+                    {p}
+                  </Button>
+                )
+              )}
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
           </div>
         )}
       </div>

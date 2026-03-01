@@ -95,11 +95,14 @@ func TestCoursesHandler(t *testing.T) {
 		if rr.Code != 200 {
 			t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 		}
-		var courses []Course
-		if err := json.NewDecoder(rr.Body).Decode(&courses); err != nil {
+		var resp struct {
+			Courses []Course `json:"courses"`
+			Total   int      `json:"total"`
+		}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 			t.Fatalf("decode: %v", err)
 		}
-		if len(courses) == 0 {
+		if len(resp.Courses) == 0 {
 			t.Fatalf("expected courses, got 0")
 		}
 	})
@@ -111,15 +114,18 @@ func TestCoursesHandler(t *testing.T) {
 		if rr.Code != 200 {
 			t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 		}
-		var courses []Course
-		if err := json.NewDecoder(rr.Body).Decode(&courses); err != nil {
+		var resp struct {
+			Courses []Course `json:"courses"`
+			Total   int      `json:"total"`
+		}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 			t.Fatalf("decode: %v", err)
 		}
-		if len(courses) != 1 {
-			t.Fatalf("expected 1 course, got %d", len(courses))
+		if len(resp.Courses) != 1 {
+			t.Fatalf("expected 1 course, got %d", len(resp.Courses))
 		}
-		if courses[0].Subject != "ZZTEST" {
-			t.Fatalf("unexpected subject: %s", courses[0].Subject)
+		if resp.Courses[0].Subject != "ZZTEST" {
+			t.Fatalf("unexpected subject: %s", resp.Courses[0].Subject)
 		}
 	})
 
@@ -130,12 +136,18 @@ func TestCoursesHandler(t *testing.T) {
 		if rr.Code != 200 {
 			t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 		}
-		var courses []Course
-		if err := json.NewDecoder(rr.Body).Decode(&courses); err != nil {
+		var resp struct {
+			Courses []Course `json:"courses"`
+			Total   int      `json:"total"`
+		}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 			t.Fatalf("decode: %v", err)
 		}
-		if len(courses) != 0 {
-			t.Fatalf("expected 0 courses, got %d", len(courses))
+		if len(resp.Courses) != 0 {
+			t.Fatalf("expected 0 courses, got %d", len(resp.Courses))
+		}
+		if resp.Total != 0 {
+			t.Fatalf("expected total=0, got %d", resp.Total)
 		}
 	})
 

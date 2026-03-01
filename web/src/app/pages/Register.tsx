@@ -57,12 +57,19 @@ function ProgramPicker({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Filter programs by search query — matches anywhere in the name
+  // Filter programs by search query using multi-token AND matching:
+  // split the query on whitespace and require every token to appear
+  // somewhere in the program name — so "engineer i" finds all Engineering
+  // programs even though the string "engineer i" never appears verbatim.
   const filtered = query.trim() === ""
     ? programs
-    : programs.filter(p =>
-        p.name.toLowerCase().includes(query.toLowerCase())
-      );
+    : (() => {
+        const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        return programs.filter(p => {
+          const name = p.name.toLowerCase();
+          return tokens.every(token => name.includes(token));
+        });
+      })();
 
   const handleSelect = (name: string) => {
     onChange(name);
@@ -156,19 +163,54 @@ export function Register() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Per-field validation errors (shown on blur or submit)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function validateField(field: string, value: string): string {
+    switch (field) {
+      case "name":
+        if (!value.trim()) return "Full name is required";
+        if (value.trim().length < 2) return "Name must be at least 2 characters";
+        return "";
+      case "email":
+        if (!value.trim()) return "Email is required";
+        if (!EMAIL_RE.test(value.trim())) return "Enter a valid email address";
+        return "";
+      case "password":
+        if (!value) return "Password is required";
+        if (value.length < 8) return "Password must be at least 8 characters";
+        return "";
+      case "confirmPassword":
+        if (!value) return "Please confirm your password";
+        if (value !== password) return "Passwords do not match";
+        return "";
+      default:
+        return "";
+    }
+  }
+
+  function handleBlur(field: string, value: string) {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    setFieldErrors(prev => ({ ...prev, [field]: validateField(field, value) }));
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    // Client-side validation before hitting the API
-    if (password !== confirmPassword) {
-      setError("Passwords don't match");
-      return;
+    // Validate all fields at once; mark them all touched so errors show
+    const fields = { name, email, password, confirmPassword };
+    const errors: Record<string, string> = {};
+    for (const [field, value] of Object.entries(fields)) {
+      const msg = validateField(field, value);
+      if (msg) errors[field] = msg;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters");
-      return;
-    }
+    setFieldErrors(errors);
+    setTouched({ name: true, email: true, password: true, confirmPassword: true });
+    if (Object.keys(errors).length > 0) return;
 
     setLoading(true);
     try {
@@ -208,12 +250,15 @@ export function Register() {
                   id="name"
                   type="text"
                   placeholder="John Doe"
-                  className="pl-10"
+                  className={`pl-10 ${touched.name && fieldErrors.name ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                   value={name}
-                  onChange={e => setName(e.target.value)}
-                  required
+                  onChange={e => { setName(e.target.value); if (touched.name) setFieldErrors(p => ({ ...p, name: validateField("name", e.target.value) })); }}
+                  onBlur={e => handleBlur("name", e.target.value)}
                 />
               </div>
+              {touched.name && fieldErrors.name && (
+                <p className="text-xs text-red-500">{fieldErrors.name}</p>
+              )}
             </div>
 
             {/* Email */}
@@ -225,12 +270,15 @@ export function Register() {
                   id="email"
                   type="email"
                   placeholder="student@mcmaster.ca"
-                  className="pl-10"
+                  className={`pl-10 ${touched.email && fieldErrors.email ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
+                  onChange={e => { setEmail(e.target.value); if (touched.email) setFieldErrors(p => ({ ...p, email: validateField("email", e.target.value) })); }}
+                  onBlur={e => handleBlur("email", e.target.value)}
                 />
               </div>
+              {touched.email && fieldErrors.email && (
+                <p className="text-xs text-red-500">{fieldErrors.email}</p>
+              )}
             </div>
 
             {/* Program — searchable picker backed by real API data */}
@@ -265,14 +313,21 @@ export function Register() {
                   id="password"
                   type="password"
                   placeholder="Create a password"
-                  className="pl-10"
+                  className={`pl-10 ${touched.password && fieldErrors.password ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  required
-                  minLength={8}
+                  onChange={e => {
+                    setPassword(e.target.value);
+                    if (touched.password) setFieldErrors(p => ({ ...p, password: validateField("password", e.target.value) }));
+                    // Re-validate confirm too so the match error updates live
+                    if (touched.confirmPassword) setFieldErrors(p => ({ ...p, confirmPassword: e.target.value !== confirmPassword ? "Passwords do not match" : "" }));
+                  }}
+                  onBlur={e => handleBlur("password", e.target.value)}
                 />
               </div>
-              <p className="text-xs text-muted-foreground">Minimum 8 characters</p>
+              {touched.password && fieldErrors.password
+                ? <p className="text-xs text-red-500">{fieldErrors.password}</p>
+                : <p className="text-xs text-muted-foreground">Minimum 8 characters</p>
+              }
             </div>
 
             {/* Confirm password */}
@@ -284,13 +339,15 @@ export function Register() {
                   id="confirmPassword"
                   type="password"
                   placeholder="Confirm your password"
-                  className="pl-10"
+                  className={`pl-10 ${touched.confirmPassword && fieldErrors.confirmPassword ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                   value={confirmPassword}
-                  onChange={e => setConfirmPassword(e.target.value)}
-                  required
-                  minLength={8}
+                  onChange={e => { setConfirmPassword(e.target.value); if (touched.confirmPassword) setFieldErrors(p => ({ ...p, confirmPassword: validateField("confirmPassword", e.target.value) })); }}
+                  onBlur={e => handleBlur("confirmPassword", e.target.value)}
                 />
               </div>
+              {touched.confirmPassword && fieldErrors.confirmPassword && (
+                <p className="text-xs text-red-500">{fieldErrors.confirmPassword}</p>
+              )}
             </div>
 
             {/* Terms checkbox */}

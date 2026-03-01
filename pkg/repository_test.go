@@ -92,9 +92,13 @@ func TestSearchCourses_GetCourseByID_GetRequisites_GetPlanItems(t *testing.T) {
 	}
 
 	t.Run("SearchCourses finds by subject", func(t *testing.T) {
-		out, err := repo.SearchCourses("ZZTEST")
+		// limit=0 means no cap; offset=0
+		out, total, err := repo.SearchCourses("ZZTEST", 0, 0)
 		if err != nil {
 			t.Fatalf("SearchCourses: %v", err)
+		}
+		if total != 1 {
+			t.Fatalf("expected total=1, got %d", total)
 		}
 		if len(out) != 1 {
 			t.Fatalf("expected 1 result, got %d", len(out))
