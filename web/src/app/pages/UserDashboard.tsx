@@ -103,6 +103,25 @@ function getNextPlanningSlot(today = new Date()): PlanningSlot {
   return { yearIndex: 1, season: "Spring" };
 }
 
+function parseJSONOrDefault<T>(raw: string, fallback: T): T {
+  const trimmed = raw.trim();
+  if (!trimmed) return fallback;
+
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    throw new Error("Server returned invalid JSON");
+  }
+}
+
+async function fetchJSONOrDefault<T>(url: string, fallback: T): Promise<T> {
+  const res = await authFetch(url);
+  if (!res.ok) throw new Error(`Server returned ${res.status}`);
+  const raw = await res.text();
+  return parseJSONOrDefault(raw, fallback);
+}
+
+
 // ---------------------------------------------------------------------------
 // GradePromptDialog
 // Shown when a user marks a course as COMPLETED — lets them optionally
@@ -419,32 +438,34 @@ export function UserDashboard() {
 
   useEffect(() => {
     if (!user) return;
-    authFetch(`/api/users/${user.userID}/plan`)
-      .then(res => {
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-        return res.json();
+
+    fetchJSONOrDefault<APIPlanItem[]>(`/api/users/${user.userID}/plan`, [])
+      .then((data) => {
+        setPlanItems(data);
+        setError(null);
       })
-      .then((data: APIPlanItem[]) => { setPlanItems(data ?? []); setError(null); })
-      .catch(err => setError(err.message))
+      .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
-    authFetch(`/api/users/${user.userID}/gpa`)
-      .then(res => res.json())
-      .then((data: GPAResult) => setGpaData(data))
+
+    fetchJSONOrDefault<GPAResult | null>(`/api/users/${user.userID}/gpa`, null)
+      .then((data) => setGpaData(data))
       .catch(() => setGpaData(null));
   }, [user]);
 
   // Refresh plan and GPA after any status/grade change
   const refreshPlan = async () => {
     if (!user) return;
+
     const [planData, gpaRes] = await Promise.all([
-      authFetch(`/api/users/${user.userID}/plan`).then(r => r.json()),
-      authFetch(`/api/users/${user.userID}/gpa`).then(r => r.json()),
+      fetchJSONOrDefault<APIPlanItem[]>(`/api/users/${user.userID}/plan`, []),
+      fetchJSONOrDefault<GPAResult | null>(`/api/users/${user.userID}/gpa`, null),
     ]);
-    setPlanItems(planData ?? []);
+
+    setPlanItems(planData);
     setGpaData(gpaRes);
   };
 
