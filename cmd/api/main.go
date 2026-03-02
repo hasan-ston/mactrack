@@ -84,7 +84,7 @@ func main() {
 
 		// Validation route: GET /api/users/:id/validation
 		if strings.HasSuffix(r.URL.Path, "/validation") {
-			pkg.RequireAuth(pkg.RequireOwner(pkg.GetUserValidationHandler(repo, svc)))
+			pkg.RequireAuth(pkg.RequireOwner(pkg.GetUserValidationHandler(repo, svc)))(w, r)
 
 			return
 		}
@@ -93,7 +93,7 @@ func main() {
 		if strings.HasSuffix(r.URL.Path, "/plan") {
 			switch r.Method {
 			case http.MethodGet:
-				pkg.RequireAuth(pkg.RequireOwner(pkg.GetUserPlanHandler(repo, svc)))
+				pkg.RequireAuth(pkg.RequireOwner(pkg.GetUserPlanHandler(repo, svc)))(w, r)
 
 			case http.MethodPost:
 				pkg.RequireAuth(pkg.RequireOwner(pkg.PostUserPlanHandler(repo)))(w, r)

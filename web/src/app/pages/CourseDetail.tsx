@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { useParams, Link, useNavigate } from "react-router";
-import { ArrowLeft, BookOpen, Users, Star, TrendingUp, Clock } from "lucide-react";
+import { useParams, Link } from "react-router";
+import { ArrowLeft, BookOpen, Users, Star, TrendingUp, Clock, CheckCircle2 } from "lucide-react";
+import { AddToPlannerDialog } from "../components/AddToPlannerDialog";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -60,7 +61,6 @@ export function CourseDetail() {
   const [requisitesLoading, setRequisitesLoading] = useState(false);
 
   const [isAdded, setIsAdded] = useState(false);
-  const navigate = useNavigate();
 
   // Step 1: fetch the course by its numeric DB id
   useEffect(() => {
@@ -198,19 +198,18 @@ export function CourseDetail() {
           <div className="flex gap-2">
             {isAdded ? (
               <Button asChild variant="secondary">
-                <Link to="/planner">Added to Planner</Link>
+                <Link to="/planner">
+                  <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
+                  View in Planner
+                </Link>
               </Button>
             ) : (
-              <Button
-                onClick={() => {
-                  // TODO: call backend to persist planned course
-                  setIsAdded(true);
-                  navigate("/planner");
-                }}
-                variant="default"
-              >
-                Add to Planner
-              </Button>
+              <AddToPlannerDialog
+                subject={course.subject}
+                courseNumber={course.course_number}
+                courseName={course.course_name}
+                onAdded={() => setIsAdded(true)}
+              />
             )}
           </div>
         </div>
