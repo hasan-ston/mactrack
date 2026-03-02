@@ -89,6 +89,12 @@ func main() {
 			return
 		}
 
+		// Recommendations route: GET /api/users/:id/recommendations
+		if strings.HasSuffix(r.URL.Path, "/recommendations") {
+			pkg.RequireAuth(pkg.RequireOwner(pkg.GetUserRecommendationsHandler(repo, svc)))(w, r)
+			return
+		}
+
 		// Plan collection: GET or POST /api/users/:id/plan
 		if strings.HasSuffix(r.URL.Path, "/plan") {
 			switch r.Method {

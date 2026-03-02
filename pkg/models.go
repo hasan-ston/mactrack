@@ -97,6 +97,12 @@ type ValidationResult struct {
 	PrereqWarnings      []PrereqWarning `json:"prereq_warnings"`
 }
 
+type CourseRecommendation struct {
+	CourseCode  string `json:"course_code"`
+	Reason      string `json:"reason"`
+	CourseLevel int    `json:"course_level"`
+}
+
 func UnitsFromCourseNumber(courseNumber string, defaultUnits int) int {
 	if len(courseNumber) < 2 {
 		return defaultUnits

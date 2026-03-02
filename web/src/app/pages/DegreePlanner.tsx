@@ -53,12 +53,14 @@ interface APIProgram {
   total_units: number | null;
 }
 
-interface GroupResult {
-  missing_courses: string[];
+interface APIRecommendation {
+  course_code: string;
+  reason: string;
+  course_level: number;
 }
 
-interface ValidationResult {
-  groups: GroupResult[];
+interface RecommendationsResponse {
+  recommendations: APIRecommendation[];
 }
 
 function normalizeProgramName(name: string): string {
@@ -98,7 +100,7 @@ export function DegreePlanner() {
   const [planError, setPlanError] = useState<string | null>(null);
   const [mutating, setMutating] = useState(false);
   const [programUnitsRequired, setProgramUnitsRequired] = useState(DEFAULT_UNITS_TO_GRADUATE);
-  const [suggestedCourses, setSuggestedCourses] = useState<string[]>([]);
+  const [suggestedCourses, setSuggestedCourses] = useState<APIRecommendation[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
 
   // Fetch plan on mount
@@ -173,28 +175,18 @@ export function DegreePlanner() {
 
         if (!match) throw new Error("No matching program found");
 
-        return authFetch(`/api/users/${user.userID}/validation?program_id=${match.program_id}`);
+        return authFetch(`/api/users/${user.userID}/recommendations?program_id=${match.program_id}`);
       })
       .then(res => {
-        if (!res.ok) throw new Error(`Validation fetch returned ${res.status}`);
-        return res.json() as Promise<ValidationResult>;
+        if (!res.ok) throw new Error(`Recommendations fetch returned ${res.status}`);
+        return res.json() as Promise<RecommendationsResponse>;
       })
-      .then(validation => {
-        const plannedOrCompleted = new Set(
-          planItems
-            .filter(item => item.status !== "DROPPED")
-            .map(item => `${item.subject} ${item.course_number}`)
-        );
-
-        const uniqueMissing = Array.from(
-          new Set(validation.groups.flatMap(group => group.missing_courses))
-        ).filter(course => !plannedOrCompleted.has(course));
-
-        setSuggestedCourses(uniqueMissing.slice(0, 8));
+      .then((data) => {
+        setSuggestedCourses(data.recommendations ?? []);
       })
       .catch(() => setSuggestedCourses([]))
       .finally(() => setSuggestionsLoading(false));
-  }, [user?.program, user?.userID, planItems]);
+  }, [user?.program, user?.userID, planItems.length]);
 
   // Course search — debounced; uses limit=50 since results are shown in a dialog
   // The multi-token backend search means "compsci 2" or "software eng" work correctly.
@@ -291,8 +283,8 @@ export function DegreePlanner() {
   };
 
 
-  const openAddDialogWithSuggestion = (courseCodeSuggestion: string) => {
-    setSearchQuery(courseCodeSuggestion);
+  const openAddDialogWithSuggestion = (courseCodeSuggestion: APIRecommendation) => {
+    setSearchQuery(courseCodeSuggestion.course_code);
     setSelectedCourse(null);
     setDialogOpen(true);
   };
@@ -500,16 +492,18 @@ export function DegreePlanner() {
               <p className="text-sm text-muted-foreground">
                 Based on your degree requirement gaps, here are courses you should plan next:
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="space-y-2">
                 {suggestedCourses.map((course) => (
-                  <Button
-                    key={course}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openAddDialogWithSuggestion(course)}
-                  >
-                    {course}
-                  </Button>
+                  <div key={course.course_code} className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openAddDialogWithSuggestion(course)}
+                    >
+                      {course.course_code}
+                    </Button>
+                    <span className="text-xs text-muted-foreground">{course.reason}</span>
+                  </div>
                 ))}
               </div>
             </div>

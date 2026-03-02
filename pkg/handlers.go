@@ -309,6 +309,100 @@ func GetUserValidationHandler(repo *Repository, svc *Service) http.HandlerFunc {
 	}
 }
 
+// GetUserRecommendationsHandler serves GET /api/users/{id}/recommendations?program_id={id}
+// It returns year-aware recommended courses derived from requirement gaps.
+func GetUserRecommendationsHandler(repo *Repository, svc *Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		idStr := strings.TrimPrefix(r.URL.Path, "/api/users/")
+		idStr = strings.TrimSuffix(idStr, "/recommendations")
+		userID, err := strconv.Atoi(strings.Trim(idStr, "/"))
+		if err != nil || userID == 0 {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		programID, err := strconv.Atoi(r.URL.Query().Get("program_id"))
+		if err != nil || programID == 0 {
+			http.Error(w, "program_id query param is required", http.StatusBadRequest)
+			return
+		}
+
+		program, err := repo.GetProgramWithGroups(programID)
+		if err != nil {
+			log.Printf("load program: %v", err)
+			http.Error(w, "failed to load program", http.StatusInternalServerError)
+			return
+		}
+		if program == nil {
+			http.Error(w, "program not found", http.StatusNotFound)
+			return
+		}
+
+		user, err := repo.GetUserByID(userID)
+		if err != nil {
+			http.Error(w, "failed to load user", http.StatusInternalServerError)
+			return
+		}
+		if user == nil {
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
+		}
+
+		rows, err := repo.DB.Query(`
+            SELECT pi.plan_item_id, pi.plan_term_id, pi.subject,
+                   pi.course_number, pi.status, pi.grade, pi.note
+            FROM plan_items pi
+            JOIN plan_terms pt ON pt.plan_term_id = pi.plan_term_id
+            WHERE pt.user_id = ?`, userID)
+		if err != nil {
+			http.Error(w, "failed to load plan items", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var planItems []PlanItem
+		for rows.Next() {
+			var pi PlanItem
+			var grade, note sql.NullString
+			if err := rows.Scan(&pi.PlanItemID, &pi.PlanTermID, &pi.Subject,
+				&pi.CourseNumber, &pi.Status, &grade, &note); err != nil {
+				http.Error(w, "failed to scan plan item", http.StatusInternalServerError)
+				return
+			}
+			if grade.Valid {
+				pi.Grade = &grade.String
+			}
+			if note.Valid {
+				pi.Note = &note.String
+			}
+			planItems = append(planItems, pi)
+		}
+
+		yearOfStudy := 1
+		if user.YearOfStudy != nil && *user.YearOfStudy > 0 {
+			yearOfStudy = *user.YearOfStudy
+		}
+
+		recommendations, err := svc.RecommendCourses(planItems, program, yearOfStudy, 8)
+		if err != nil {
+			log.Printf("recommendation error: %v", err)
+			http.Error(w, "recommendation generation failed", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"recommendations": recommendations,
+			"year_of_study":   yearOfStudy,
+		})
+	}
+}
+
 // GetUserGPAHandler serves GET /api/users/{id}/gpa
 // Returns JSON: { gpa: float64, has_grades: bool, letter_grade: string }
 func GetUserGPAHandler(repo *Repository) http.HandlerFunc {

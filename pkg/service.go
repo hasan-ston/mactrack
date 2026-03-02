@@ -25,6 +25,154 @@ func unitsFromCourseNumber(courseNumber string, defaultUnits int) int {
 	return n
 }
 
+func parseCourseLevel(courseCode string) int {
+	parts := strings.Fields(strings.TrimSpace(courseCode))
+	if len(parts) < 2 || len(parts[1]) == 0 {
+		return 0
+	}
+	for _, ch := range parts[1] {
+		if ch >= '0' && ch <= '9' {
+			return int(ch - '0')
+		}
+	}
+	return 0
+}
+
+func (s *Service) countMissingPrereqs(courseCode string, completedSet map[string]struct{}) (int, error) {
+	parts := strings.Fields(strings.TrimSpace(courseCode))
+	if len(parts) < 2 {
+		return 0, nil
+	}
+	subject := parts[0]
+	courseNumber := strings.Join(parts[1:], " ")
+
+	rows, err := s.Repo.DB.Query(`
+		SELECT req_subject, req_course_number
+		FROM requisites
+		WHERE subject = ? AND course_number = ? AND kind = 'PREREQ'
+	`, subject, courseNumber)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	missing := 0
+	for rows.Next() {
+		var reqSubject, reqNumber string
+		if err := rows.Scan(&reqSubject, &reqNumber); err != nil {
+			return 0, err
+		}
+		reqCode := strings.TrimSpace(reqSubject + " " + reqNumber)
+		if _, ok := completedSet[reqCode]; !ok {
+			missing++
+		}
+	}
+	return missing, rows.Err()
+}
+
+func (s *Service) RecommendCourses(planItems []PlanItem, program *Program, yearOfStudy int, limit int) ([]CourseRecommendation, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+	validation, err := s.ValidatePlan(planItems, program)
+	if err != nil {
+		return nil, err
+	}
+
+	plannedSet := make(map[string]struct{}, len(planItems))
+	completedSet := make(map[string]struct{}, len(planItems))
+	for _, item := range planItems {
+		code := strings.TrimSpace(item.Subject + " " + item.CourseNumber)
+		if strings.EqualFold(item.Status, "DROPPED") {
+			continue
+		}
+		plannedSet[code] = struct{}{}
+		if strings.EqualFold(item.Status, "COMPLETED") {
+			completedSet[code] = struct{}{}
+		}
+	}
+
+	type scored struct {
+		CourseRecommendation
+		missingPrereqs int
+	}
+
+	seen := map[string]struct{}{}
+	var upperYear []scored
+	var bridge []scored
+
+	minLevel := 1
+	if yearOfStudy >= 2 {
+		minLevel = yearOfStudy
+	}
+
+	for _, group := range validation.Groups {
+		for _, code := range group.MissingCourses {
+			normalized := strings.TrimSpace(code)
+			if normalized == "" {
+				continue
+			}
+			if _, ok := seen[normalized]; ok {
+				continue
+			}
+			seen[normalized] = struct{}{}
+			if _, already := plannedSet[normalized]; already {
+				continue
+			}
+
+			lvl := parseCourseLevel(normalized)
+			missingPrereqs, err := s.countMissingPrereqs(normalized, completedSet)
+			if err != nil {
+				return nil, err
+			}
+
+			rec := scored{CourseRecommendation: CourseRecommendation{
+				CourseCode:  normalized,
+				CourseLevel: lvl,
+			}, missingPrereqs: missingPrereqs}
+			if missingPrereqs == 0 {
+				rec.Reason = "Fits your remaining requirements and prerequisites appear satisfied"
+			} else {
+				rec.Reason = fmt.Sprintf("Required for your program; complete %d prerequisite(s) first", missingPrereqs)
+			}
+
+			if lvl >= minLevel || lvl == 0 {
+				upperYear = append(upperYear, rec)
+			} else {
+				rec.Reason = "Foundation requirement from lower year; schedule if still outstanding"
+				bridge = append(bridge, rec)
+			}
+		}
+	}
+
+	sortByReadiness := func(items []scored) {
+		for i := 0; i < len(items); i++ {
+			for j := i + 1; j < len(items); j++ {
+				if items[j].missingPrereqs < items[i].missingPrereqs {
+					items[i], items[j] = items[j], items[i]
+				}
+			}
+		}
+	}
+
+	sortByReadiness(upperYear)
+	sortByReadiness(bridge)
+
+	combined := upperYear
+	if len(combined) < limit {
+		combined = append(combined, bridge...)
+	}
+	if len(combined) > limit {
+		combined = combined[:limit]
+	}
+
+	recommendations := make([]CourseRecommendation, 0, len(combined))
+	for _, item := range combined {
+		recommendations = append(recommendations, item.CourseRecommendation)
+	}
+	return recommendations, nil
+}
+
 func (s *Service) ValidatePlan(planItems []PlanItem, program *Program) (ValidationResult, error) {
 	// Fallback unit value when the course number suffix can't be parsed
 	const defaultUnitsPerCourse = 3
@@ -38,7 +186,7 @@ func (s *Service) ValidatePlan(planItems []PlanItem, program *Program) (Validati
 			completedSet[key] = pi
 		}
 	}
-	
+
 	prereqWarnings := []PrereqWarning{}
 	for _, pi := range planItems {
 		statusUpper := strings.ToUpper(pi.Status)
