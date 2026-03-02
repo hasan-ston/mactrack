@@ -3,17 +3,11 @@ import { Star, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { AddToPlannerDialog } from "./AddToPlannerDialog";
+import { parseCourseCode, unitsFromCourseNumber } from "../lib/courseUtils";
 import type { Course } from "../data/mockData";
 
 interface CourseCardProps {
   course: Course;
-}
-
-// Split a McMaster course code like "COMPSCI 2C03" into subject + number.
-function parseCourseCode(code: string): { subject: string; courseNumber: string } {
-  const spaceIdx = code.indexOf(" ");
-  if (spaceIdx === -1) return { subject: code, courseNumber: "" };
-  return { subject: code.slice(0, spaceIdx), courseNumber: code.slice(spaceIdx + 1) };
 }
 
 export function CourseCard({ course }: CourseCardProps) {

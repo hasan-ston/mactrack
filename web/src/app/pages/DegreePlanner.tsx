@@ -10,6 +10,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { useAuth } from "../contexts/AuthContext";
 import { authFetch } from "../lib/api";
+import { unitsFromCourseNumber } from "../lib/courseUtils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,14 +50,6 @@ const UNITS_TO_GRADUATE = 120;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-// Parse unit value from McMaster course number — last 2 digits encode units.
-// e.g. "2C03" → 3, "1P13" → 13. Falls back to 3 if unparseable.
-function unitsFromCourseNumber(courseNumber: string): number {
-  const suffix = courseNumber.slice(-2);
-  const n = parseInt(suffix, 10);
-  return isNaN(n) || n === 0 ? 3 : n;
-}
 
 function courseCode(c: APICourse): string {
   return `${c.subject} ${c.course_number}`;

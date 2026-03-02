@@ -679,6 +679,33 @@ func ProgramRequirementsHandler(repo *Repository) http.HandlerFunc {
 				rc.AdhocText = &adhocText.String
 			}
 
+			// If course_code is empty but course_name contains course info, extract it.
+			// Format: "View course details for SUBJECT NUMBER ... - Title"
+			// e.g. "View course details for ENGINEER 1P13 A/B - Integrated Cornerstone..."
+			if (rc.CourseCode == nil || *rc.CourseCode == "") && rc.CourseName != nil && strings.HasPrefix(*rc.CourseName, "View course details for ") {
+				rest := strings.TrimPrefix(*rc.CourseName, "View course details for ")
+				// Split on " - " to separate code from title
+				if dashIdx := strings.Index(rest, " - "); dashIdx > 0 {
+					codeWithVariant := strings.TrimSpace(rest[:dashIdx])
+					// Code may have variants like "A/B" or "A/B/S" at the end — strip them
+					parts := strings.Fields(codeWithVariant)
+					if len(parts) >= 2 {
+						// Check if last part is a variant suffix (single chars separated by /)
+						lastPart := parts[len(parts)-1]
+						isVariant := len(lastPart) <= 5 && strings.Contains(lastPart, "/")
+						var parsedCode string
+						if isVariant && len(parts) >= 3 {
+							// e.g. ["ENGINEER", "1P13", "A/B"] → "ENGINEER 1P13"
+							parsedCode = strings.Join(parts[:len(parts)-1], " ")
+						} else {
+							// e.g. ["ENGINEER", "1P13"] → "ENGINEER 1P13"
+							parsedCode = parts[0] + " " + parts[1]
+						}
+						rc.CourseCode = &parsedCode
+					}
+				}
+			}
+
 			// Attach course to its parent group
 			if g, ok := groupMap[groupID]; ok {
 				g.Courses = append(g.Courses, rc)

@@ -9,6 +9,7 @@ import { Label } from "../components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "../components/ui/sheet";
 import { courses as mockCourses, Course as MockCourse } from "../data/mockData";
 import { CourseCard } from "../components/CourseCard";
+import { unitsFromCourseNumber } from "../lib/courseUtils";
 
 const PAGE_SIZE = 20;
 
@@ -107,7 +108,7 @@ export function CourseBrowser() {
           code: `${c.subject} ${c.course_number}`,
           title: c.course_name || "",
           faculty: c.subject || "",
-          credits: 3,
+          credits: unitsFromCourseNumber(c.course_number),
           description: c.course_name || "",
           prerequisites: [],
           term: c.term || "",

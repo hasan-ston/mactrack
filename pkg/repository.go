@@ -170,6 +170,33 @@ func (r *Repository) GetProgramWithGroups(programID int) (*Program, error) {
 		if adhocText.Valid {
 			rc.AdhocText = &adhocText.String
 		}
+
+		// If course_code is empty but course_name contains course info, extract it.
+		// Format: "View course details for SUBJECT NUMBER ... - Title"
+		// e.g. "View course details for ENGINEER 1P13 A/B - Integrated Cornerstone..."
+		if rc.CourseCode == "" && strings.HasPrefix(rc.CourseName, "View course details for ") {
+			rest := strings.TrimPrefix(rc.CourseName, "View course details for ")
+			// Split on " - " to separate code from title
+			if dashIdx := strings.Index(rest, " - "); dashIdx > 0 {
+				codeWithVariant := strings.TrimSpace(rest[:dashIdx])
+				// Code may have variants like "A/B" or "A/B/S" at the end — strip them
+				// Pattern: "SUBJECT NUMBER" possibly followed by " X/Y" or " X/Y/Z"
+				parts := strings.Fields(codeWithVariant)
+				if len(parts) >= 2 {
+					// Check if last part is a variant suffix (single chars separated by /)
+					lastPart := parts[len(parts)-1]
+					isVariant := len(lastPart) <= 5 && strings.Contains(lastPart, "/")
+					if isVariant && len(parts) >= 3 {
+						// e.g. ["ENGINEER", "1P13", "A/B"] → "ENGINEER 1P13"
+						rc.CourseCode = strings.Join(parts[:len(parts)-1], " ")
+					} else {
+						// e.g. ["ENGINEER", "1P13"] → "ENGINEER 1P13"
+						rc.CourseCode = parts[0] + " " + parts[1]
+					}
+				}
+			}
+		}
+
 		if g, ok := groupMap[rc.GroupID]; ok {
 			g.Courses = append(g.Courses, rc)
 		}
