@@ -45,7 +45,25 @@ interface APIPlanItem {
 const TERMS = ["Fall", "Winter", "Spring/Summer"] as const;
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR + i);
-const UNITS_TO_GRADUATE = 120;
+const DEFAULT_UNITS_TO_GRADUATE = 120;
+
+interface APIProgram {
+  program_id: number;
+  name: string;
+  total_units: number | null;
+}
+
+interface GroupResult {
+  missing_courses: string[];
+}
+
+interface ValidationResult {
+  groups: GroupResult[];
+}
+
+function normalizeProgramName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,6 +97,9 @@ export function DegreePlanner() {
   const [planLoading, setPlanLoading] = useState(true);
   const [planError, setPlanError] = useState<string | null>(null);
   const [mutating, setMutating] = useState(false);
+  const [programUnitsRequired, setProgramUnitsRequired] = useState(DEFAULT_UNITS_TO_GRADUATE);
+  const [suggestedCourses, setSuggestedCourses] = useState<string[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
 
   // Fetch plan on mount
   useEffect(() => {
@@ -93,6 +114,87 @@ export function DegreePlanner() {
       .catch(err => setPlanError(err.message))
       .finally(() => setPlanLoading(false));
   }, [user]);
+
+  useEffect(() => {
+    if (!user?.program) {
+      setProgramUnitsRequired(DEFAULT_UNITS_TO_GRADUATE);
+      return;
+    }
+
+    const normalizedUserProgram = normalizeProgramName(user.program);
+
+    fetch("/api/programs")
+      .then(res => {
+        if (!res.ok) throw new Error(`Programs fetch returned ${res.status}`);
+        return res.json() as Promise<APIProgram[]>;
+      })
+      .then(programs => {
+        const match = programs.find(program => {
+          const normalizedProgram = normalizeProgramName(program.name);
+          return (
+            normalizedProgram.includes(normalizedUserProgram) ||
+            normalizedUserProgram.includes(normalizedProgram)
+          );
+        });
+
+        if (match?.total_units && match.total_units > 0) {
+          setProgramUnitsRequired(match.total_units);
+          return;
+        }
+
+        setProgramUnitsRequired(DEFAULT_UNITS_TO_GRADUATE);
+      })
+      .catch(() => setProgramUnitsRequired(DEFAULT_UNITS_TO_GRADUATE));
+  }, [user?.program]);
+
+
+  useEffect(() => {
+    if (!user?.program || !user?.userID) {
+      setSuggestedCourses([]);
+      return;
+    }
+
+    const normalizedUserProgram = normalizeProgramName(user.program);
+    setSuggestionsLoading(true);
+
+    authFetch("/api/programs")
+      .then(res => {
+        if (!res.ok) throw new Error(`Programs fetch returned ${res.status}`);
+        return res.json() as Promise<APIProgram[]>;
+      })
+      .then(programs => {
+        const match = programs.find(program => {
+          const normalizedProgram = normalizeProgramName(program.name);
+          return (
+            normalizedProgram.includes(normalizedUserProgram) ||
+            normalizedUserProgram.includes(normalizedProgram)
+          );
+        });
+
+        if (!match) throw new Error("No matching program found");
+
+        return authFetch(`/api/users/${user.userID}/validation?program_id=${match.program_id}`);
+      })
+      .then(res => {
+        if (!res.ok) throw new Error(`Validation fetch returned ${res.status}`);
+        return res.json() as Promise<ValidationResult>;
+      })
+      .then(validation => {
+        const plannedOrCompleted = new Set(
+          planItems
+            .filter(item => item.status !== "DROPPED")
+            .map(item => `${item.subject} ${item.course_number}`)
+        );
+
+        const uniqueMissing = Array.from(
+          new Set(validation.groups.flatMap(group => group.missing_courses))
+        ).filter(course => !plannedOrCompleted.has(course));
+
+        setSuggestedCourses(uniqueMissing.slice(0, 8));
+      })
+      .catch(() => setSuggestedCourses([]))
+      .finally(() => setSuggestionsLoading(false));
+  }, [user?.program, user?.userID, planItems]);
 
   // Course search — debounced; uses limit=50 since results are shown in a dialog
   // The multi-token backend search means "compsci 2" or "software eng" work correctly.
@@ -180,12 +282,19 @@ export function DegreePlanner() {
   const unitsPlanned = planItems
     .filter(pi => pi.status === "PLANNED")
     .reduce((sum, pi) => sum + unitsFromCourseNumber(pi.course_number), 0);
-  const unitsRemaining = UNITS_TO_GRADUATE - unitsCompleted;
+  const unitsRemaining = Math.max(programUnitsRequired - unitsCompleted, 0);
 
   const getCoursesByYearAndTerm = (year: number, term: string) => {
     const yearIndex = year - CURRENT_YEAR + 1;
     const season = term === "Spring/Summer" ? "Spring" : term;
     return planItems.filter(pi => pi.year_index === yearIndex && pi.season === season);
+  };
+
+
+  const openAddDialogWithSuggestion = (courseCodeSuggestion: string) => {
+    setSearchQuery(courseCodeSuggestion);
+    setSelectedCourse(null);
+    setDialogOpen(true);
   };
 
   if (planLoading) {
@@ -358,12 +467,55 @@ export function DegreePlanner() {
               <GraduationCap className="h-5 w-5 text-purple-500" />
               <div>
                 <div className="text-2xl font-bold">{unitsRemaining}</div>
-                <div className="text-xs text-muted-foreground">Units Remaining</div>
+                <div className="text-xs text-muted-foreground">
+                  Units Remaining (of {programUnitsRequired})
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
+
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Suggested Next Courses</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!user?.program ? (
+            <p className="text-sm text-muted-foreground">
+              Set your program in your profile to get personalized course suggestions.
+            </p>
+          ) : suggestionsLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Building suggestions from your requirement gaps...
+            </div>
+          ) : suggestedCourses.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No missing required courses detected from your current plan.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Based on your degree requirement gaps, here are courses you should plan next:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {suggestedCourses.map((course) => (
+                  <Button
+                    key={course}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openAddDialogWithSuggestion(course)}
+                  >
+                    {course}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Timeline */}
       <div className="space-y-8">

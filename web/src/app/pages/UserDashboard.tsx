@@ -75,7 +75,11 @@ interface GPAResult {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const UNITS_TO_GRADUATE = 120;
+const DEFAULT_UNITS_TO_GRADUATE = 120;
+
+function normalizeProgramName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 
 // Valid McMaster letter grades for the grade input hint
 const GRADE_OPTIONS = ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "D-", "F"];
@@ -368,6 +372,7 @@ export function UserDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [gpaData, setGpaData] = useState<GPAResult | null>(null);
+  const [programUnitsRequired, setProgramUnitsRequired] = useState(DEFAULT_UNITS_TO_GRADUATE);
 
   // Grade prompt dialog state — holds the item being marked complete
   // until the user confirms (with or without a grade)
@@ -384,6 +389,39 @@ export function UserDashboard() {
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, [user]);
+
+
+  useEffect(() => {
+    if (!user?.program) {
+      setProgramUnitsRequired(DEFAULT_UNITS_TO_GRADUATE);
+      return;
+    }
+
+    const normalizedUserProgram = normalizeProgramName(user.program);
+
+    authFetch("/api/programs")
+      .then(res => {
+        if (!res.ok) throw new Error(`Programs fetch returned ${res.status}`);
+        return res.json() as Promise<APIProgram[]>;
+      })
+      .then(programs => {
+        const match = programs.find(program => {
+          const normalizedProgram = normalizeProgramName(program.name);
+          return (
+            normalizedProgram.includes(normalizedUserProgram) ||
+            normalizedUserProgram.includes(normalizedProgram)
+          );
+        });
+
+        if (match?.total_units && match.total_units > 0) {
+          setProgramUnitsRequired(match.total_units);
+          return;
+        }
+
+        setProgramUnitsRequired(DEFAULT_UNITS_TO_GRADUATE);
+      })
+      .catch(() => setProgramUnitsRequired(DEFAULT_UNITS_TO_GRADUATE));
+  }, [user?.program]);
 
   useEffect(() => {
     if (!user) return;
@@ -450,8 +488,8 @@ export function UserDashboard() {
   const unitsPlanned = plannedItems.reduce(
     (sum, pi) => sum + unitsFromCourseNumber(pi.course_number), 0
   );
-  const unitsRemaining = UNITS_TO_GRADUATE - unitsCompleted;
-  const progressPercent = Math.min((unitsCompleted / UNITS_TO_GRADUATE) * 100, 100);
+  const unitsRemaining = Math.max(programUnitsRequired - unitsCompleted, 0);
+  const progressPercent = Math.min((unitsCompleted / programUnitsRequired) * 100, 100);
 
   if (loading) {
     return (
@@ -583,7 +621,7 @@ export function UserDashboard() {
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span>Units Completed</span>
-              <span className="font-medium">{unitsCompleted} / {UNITS_TO_GRADUATE}</span>
+              <span className="font-medium">{unitsCompleted} / {programUnitsRequired}</span>
             </div>
             <Progress value={progressPercent} />
           </div>
