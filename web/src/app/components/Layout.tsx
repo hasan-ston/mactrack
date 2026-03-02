@@ -118,8 +118,11 @@ export function Layout() {
               </p>
             </div>
           </div>
-          <div className="mt-8 pt-6 border-t text-center text-sm text-muted-foreground">
-            © 2026 McMaster Course Explorer. All rights reserved.
+          <div className="mt-8 pt-6 border-t flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+            <p className="text-center md:text-left">© 2026 McMaster Course Explorer. All rights reserved.</p>
+            <p className="text-center text-xs md:text-right">
+              Built by student contributors, for students.
+            </p>
           </div>
         </div>
       </footer>
