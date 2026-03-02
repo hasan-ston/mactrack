@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import {
-  User, BookOpen, Calendar, Star, TrendingUp, Loader2,
+  User, BookOpen, Calendar, Star, TrendingUp, Loader2, Plus,
   CheckCircle2, XCircle, AlertCircle, HelpCircle, ChevronDown, ChevronUp
 } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -69,6 +69,11 @@ interface GPAResult {
   letter_grade: string;
 }
 
+interface PlanningSlot {
+  yearIndex: number;
+  season: "Fall" | "Winter" | "Spring";
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -83,6 +88,20 @@ const UNITS_TO_GRADUATE = 120;
 
 // Valid McMaster letter grades for the grade input hint
 const GRADE_OPTIONS = ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "D-", "F"];
+
+function getNextPlanningSlot(today = new Date()): PlanningSlot {
+  const month = today.getMonth() + 1;
+
+  if (month >= 9) {
+    return { yearIndex: 1, season: "Fall" };
+  }
+
+  if (month >= 1 && month <= 4) {
+    return { yearIndex: 1, season: "Winter" };
+  }
+
+  return { yearIndex: 1, season: "Spring" };
+}
 
 // ---------------------------------------------------------------------------
 // GradePromptDialog
@@ -167,11 +186,22 @@ function GradePromptDialog({
 // DegreeValidation sub-component
 // ---------------------------------------------------------------------------
 
-function DegreeValidation({ userID, programName }: { userID: number; programName: string }) {
+function DegreeValidation({
+  userID,
+  programName,
+  plannedCourseKeys,
+  onQuickAdd,
+}: {
+  userID: number;
+  programName: string;
+  plannedCourseKeys: Set<string>;
+  onQuickAdd: (subject: string, courseNumber: string) => Promise<void>;
+}) {
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const [addingByCourse, setAddingByCourse] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     authFetch("/api/programs")
@@ -201,6 +231,18 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
 
   const toggleGroup = (i: number) =>
     setExpanded(prev => ({ ...prev, [i]: !prev[i] }));
+
+  const handleQuickAdd = async (code: string) => {
+    const [subject, courseNumber] = code.split(" ");
+    if (!subject || !courseNumber) return;
+
+    setAddingByCourse(prev => ({ ...prev, [code]: true }));
+    try {
+      await onQuickAdd(subject, courseNumber);
+    } finally {
+      setAddingByCourse(prev => ({ ...prev, [code]: false }));
+    }
+  };
 
   if (loading) {
     return (
@@ -316,11 +358,30 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
                 <p className="text-xs text-muted-foreground mb-2 font-medium">Still needed:</p>
                 <div className="flex flex-wrap gap-2">
                   {group.missing_courses.map((code, j) => (
-                    <Link key={j} to={`/courses/${code.split(" ")[0]}/${code.split(" ")[1]}`}>
-                      <Badge variant="outline" className="text-xs hover:bg-primary/10 transition-colors cursor-pointer">
-                        {code}
-                      </Badge>
-                    </Link>
+                    <div key={j} className="inline-flex items-center gap-1">
+                      <Link to={`/courses/${code.split(" ")[0]}/${code.split(" ")[1]}`}>
+                        <Badge variant="outline" className="text-xs hover:bg-primary/10 transition-colors cursor-pointer">
+                          {code}
+                        </Badge>
+                      </Link>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => void handleQuickAdd(code)}
+                        disabled={plannedCourseKeys.has(code) || addingByCourse[code]}
+                      >
+                        {addingByCourse[code] ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <>
+                            <Plus className="h-3 w-3 mr-1" />
+                            {plannedCourseKeys.has(code) ? "In Plan" : "Add"}
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -431,6 +492,30 @@ export function UserDashboard() {
   );
   const unitsRemaining = UNITS_TO_GRADUATE - unitsCompleted;
   const progressPercent = Math.min((unitsCompleted / UNITS_TO_GRADUATE) * 100, 100);
+  const plannedCourseKeys = new Set(
+    planItems.map(item => `${item.subject} ${item.course_number}`)
+  );
+
+  const handleQuickAddRequiredCourse = async (subject: string, courseNumber: string) => {
+    if (!user) return;
+    const slot = getNextPlanningSlot();
+    const res = await authFetch(`/api/users/${user.userID}/plan`, {
+      method: "POST",
+      body: JSON.stringify({
+        subject,
+        course_number: courseNumber,
+        year_index: slot.yearIndex,
+        season: slot.season,
+        status: "PLANNED",
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Server returned ${res.status}`);
+    }
+
+    await refreshPlan();
+  };
 
   if (loading) {
     return (
@@ -595,7 +680,12 @@ export function UserDashboard() {
         </CardHeader>
         <CardContent>
           {user?.program ? (
-            <DegreeValidation userID={user.userID} programName={user.program} />
+            <DegreeValidation
+              userID={user.userID}
+              programName={user.program}
+              plannedCourseKeys={plannedCourseKeys}
+              onQuickAdd={handleQuickAddRequiredCourse}
+            />
           ) : (
             <div className="text-center py-8 text-muted-foreground text-sm">
               No program selected. Update your profile to enable requirement tracking.
