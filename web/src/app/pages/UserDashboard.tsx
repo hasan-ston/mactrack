@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import {
-  User, BookOpen, Calendar, Star, TrendingUp, Loader2,
+  User, BookOpen, Calendar, Star, TrendingUp, Loader2, Plus,
   CheckCircle2, XCircle, AlertCircle, HelpCircle, ChevronDown, ChevronUp
 } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -17,6 +17,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { useAuth } from "../contexts/AuthContext";
 import { authFetch } from "../lib/api";
+import { AddToPlannerDialog } from "../components/AddToPlannerDialog";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -315,13 +316,34 @@ function DegreeValidation({ userID, programName }: { userID: number; programName
               <div className="border-t px-4 py-3 bg-muted/20">
                 <p className="text-xs text-muted-foreground mb-2 font-medium">Still needed:</p>
                 <div className="flex flex-wrap gap-2">
-                  {group.missing_courses.map((code, j) => (
-                    <Link key={j} to={`/courses/${code.split(" ")[0]}/${code.split(" ")[1]}`}>
-                      <Badge variant="outline" className="text-xs hover:bg-primary/10 transition-colors cursor-pointer">
-                        {code}
-                      </Badge>
-                    </Link>
-                  ))}
+                  {group.missing_courses.map((code, j) => {
+                    const parts = code.split(" ");
+                    const subject = parts[0];
+                    const courseNumber = parts.slice(1).join(" ");
+                    return (
+                      <div key={j} className="flex items-center gap-1">
+                        <Link to={`/courses/${subject}/${courseNumber}`}>
+                          <Badge variant="outline" className="text-xs hover:bg-primary/10 transition-colors cursor-pointer">
+                            {code}
+                          </Badge>
+                        </Link>
+                        <AddToPlannerDialog
+                          subject={subject}
+                          courseNumber={courseNumber}
+                          trigger={
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-5 w-5 text-muted-foreground hover:text-primary"
+                              title={`Add ${code} to planner`}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          }
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
