@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router";
 import { ArrowLeft, BookOpen, Users, Star, TrendingUp, Clock, CheckCircle2 } from "lucide-react";
 import { AddToPlannerDialog } from "../components/AddToPlannerDialog";
+import { unitsFromCourseNumber } from "../lib/courseUtils";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -189,7 +190,7 @@ export function CourseDetail() {
           <div className="space-y-2">
             <div className="flex items-center gap-3">
               <h1 className="text-4xl font-bold">{course.subject} {course.course_number}</h1>
-              <Badge variant="secondary">3 Credits</Badge>
+              <Badge variant="secondary">{unitsFromCourseNumber(course.course_number)} Credits</Badge>
             </div>
             <h2 className="text-2xl text-muted-foreground">{course.course_name}</h2>
             <p className="text-sm text-muted-foreground">{course.subject}</p>

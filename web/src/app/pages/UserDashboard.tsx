@@ -17,6 +17,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { useAuth } from "../contexts/AuthContext";
 import { authFetch } from "../lib/api";
+import { unitsFromCourseNumber } from "../lib/courseUtils";
 import { AddToPlannerDialog } from "../components/AddToPlannerDialog";
 
 // ---------------------------------------------------------------------------
@@ -73,12 +74,6 @@ interface GPAResult {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function unitsFromCourseNumber(courseNumber: string): number {
-  const suffix = courseNumber.slice(-2);
-  const n = parseInt(suffix, 10);
-  return isNaN(n) || n === 0 ? 3 : n;
-}
 
 const UNITS_TO_GRADUATE = 120;
 
@@ -427,9 +422,13 @@ export function UserDashboard() {
   // Called when user confirms the grade prompt (grade may be null if skipped)
   const handleGradeConfirm = async (grade: string | null) => {
     if (!pendingComplete || !user) return;
+    const payload: any = { status: "COMPLETED" };
+    // Only include `grade` when the user provided one; omit to leave NULL in DB
+    if (grade !== null) payload.grade = grade;
+
     await authFetch(`/api/users/${user.userID}/plan/${pendingComplete.plan_item_id}`, {
       method: "PATCH",
-      body: JSON.stringify({ status: "COMPLETED", grade: grade ?? "" }),
+      body: JSON.stringify(payload),
     });
     setPendingComplete(null);
     await refreshPlan();
