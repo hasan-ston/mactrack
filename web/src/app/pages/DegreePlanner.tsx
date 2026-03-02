@@ -66,6 +66,24 @@ function planItemKey(item: APIPlanItem): string {
   return `${item.subject}-${item.course_number}-${item.year_index}-${item.season}`;
 }
 
+function parseJSONOrDefault<T>(raw: string, fallback: T): T {
+  const trimmed = raw.trim();
+  if (!trimmed) return fallback;
+
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    throw new Error("Server returned invalid JSON");
+  }
+}
+
+async function fetchJSONOrDefault<T>(url: string, fallback: T): Promise<T> {
+  const res = await authFetch(url);
+  if (!res.ok) throw new Error(`Server returned ${res.status}`);
+  const raw = await res.text();
+  return parseJSONOrDefault(raw, fallback);
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -87,17 +105,22 @@ export function DegreePlanner() {
   const [planError, setPlanError] = useState<string | null>(null);
   const [mutating, setMutating] = useState(false);
 
+  const refreshPlan = useCallback(async () => {
+    if (!user) return;
+    const updated = await fetchJSONOrDefault<APIPlanItem[]>(`/api/users/${user.userID}/plan`, []);
+    setPlanItems(updated);
+  }, [user]);
+
   // Fetch plan on mount
   useEffect(() => {
     if (!user) return;
     setPlanLoading(true);
-    authFetch(`/api/users/${user.userID}/plan`)
-      .then(res => {
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-        return res.json();
+    fetchJSONOrDefault<APIPlanItem[]>(`/api/users/${user.userID}/plan`, [])
+      .then((data) => {
+        setPlanItems(data);
+        setPlanError(null);
       })
-      .then((data: APIPlanItem[]) => { setPlanItems(data ?? []); setPlanError(null); })
-      .catch(err => setPlanError(err.message))
+      .catch((err: Error) => setPlanError(err.message))
       .finally(() => setPlanLoading(false));
   }, [user]);
 
@@ -151,8 +174,7 @@ export function DegreePlanner() {
       });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
 
-      const updated = await authFetch(`/api/users/${user.userID}/plan`).then(r => r.json());
-      setPlanItems(updated ?? []);
+      await refreshPlan();
       setSelectedCourse(null);
       setSearchQuery("");
       setDialogOpen(false);
@@ -438,8 +460,7 @@ export function DegreePlanner() {
                                       method: "PATCH",
                                       body: JSON.stringify({ status: newStatus }),
                                     });
-                                    const updated = await authFetch(`/api/users/${user!.userID}/plan`).then(r => r.json());
-                                    setPlanItems(updated ?? []);
+                                    await refreshPlan();
                                   }}
                                 >
                                   <SelectTrigger className="h-6 text-xs w-32">
@@ -467,8 +488,7 @@ export function DegreePlanner() {
                                         method: "PATCH",
                                         body: JSON.stringify({ status: "COMPLETED", grade }),
                                       });
-                                      const updated = await authFetch(`/api/users/${user!.userID}/plan`).then(r => r.json());
-                                      setPlanItems(updated ?? []);
+                                      await refreshPlan();
                                     }}
                                   />
                                 )}

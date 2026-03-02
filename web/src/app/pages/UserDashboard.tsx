@@ -121,6 +121,12 @@ async function fetchJSONOrDefault<T>(url: string, fallback: T): Promise<T> {
   return parseJSONOrDefault(raw, fallback);
 }
 
+function parseCourseCode(code: string): { subject: string; courseNumber: string } | null {
+  const match = code.trim().match(/^([A-Za-z]+)\s+([A-Za-z0-9]+)$/);
+  if (!match) return null;
+  return { subject: match[1].toUpperCase(), courseNumber: match[2].toUpperCase() };
+}
+
 
 // ---------------------------------------------------------------------------
 // GradePromptDialog
@@ -221,6 +227,7 @@ function DegreeValidation({
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [addingByCourse, setAddingByCourse] = useState<Record<string, boolean>>({});
+  const [quickAddError, setQuickAddError] = useState<string | null>(null);
 
   useEffect(() => {
     authFetch("/api/programs")
@@ -252,12 +259,15 @@ function DegreeValidation({
     setExpanded(prev => ({ ...prev, [i]: !prev[i] }));
 
   const handleQuickAdd = async (code: string) => {
-    const [subject, courseNumber] = code.split(" ");
-    if (!subject || !courseNumber) return;
+    const parsed = parseCourseCode(code);
+    if (!parsed) return;
 
+    setQuickAddError(null);
     setAddingByCourse(prev => ({ ...prev, [code]: true }));
     try {
-      await onQuickAdd(subject, courseNumber);
+      await onQuickAdd(parsed.subject, parsed.courseNumber);
+    } catch (err) {
+      setQuickAddError(err instanceof Error ? err.message : "Failed to add course");
     } finally {
       setAddingByCourse(prev => ({ ...prev, [code]: false }));
     }
@@ -330,6 +340,12 @@ function DegreeValidation({
         </div>
       )}
 
+      {quickAddError && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {quickAddError}
+        </div>
+      )}
+
       <div className="space-y-2">
         {validation.groups.map((group, i) => (
           <div key={i} className="border rounded-lg overflow-hidden">
@@ -376,32 +392,45 @@ function DegreeValidation({
               <div className="border-t px-4 py-3 bg-muted/20">
                 <p className="text-xs text-muted-foreground mb-2 font-medium">Still needed:</p>
                 <div className="flex flex-wrap gap-2">
-                  {group.missing_courses.map((code, j) => (
-                    <div key={j} className="inline-flex items-center gap-1">
-                      <Link to={`/courses/${code.split(" ")[0]}/${code.split(" ")[1]}`}>
-                        <Badge variant="outline" className="text-xs hover:bg-primary/10 transition-colors cursor-pointer">
+                  {group.missing_courses.map((code, j) => {
+                    const parsed = parseCourseCode(code);
+                    const inPlan = plannedCourseKeys.has(code);
+
+                    if (!parsed) {
+                      return (
+                        <Badge key={j} variant="outline" className="text-xs">
                           {code}
                         </Badge>
-                      </Link>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => void handleQuickAdd(code)}
-                        disabled={plannedCourseKeys.has(code) || addingByCourse[code]}
-                      >
-                        {addingByCourse[code] ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <>
-                            <Plus className="h-3 w-3 mr-1" />
-                            {plannedCourseKeys.has(code) ? "In Plan" : "Add"}
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  ))}
+                      );
+                    }
+
+                    return (
+                      <div key={j} className="inline-flex items-center gap-1">
+                        <Link to={`/courses/${parsed.subject}/${parsed.courseNumber}`}>
+                          <Badge variant="outline" className="text-xs hover:bg-primary/10 transition-colors cursor-pointer">
+                            {code}
+                          </Badge>
+                        </Link>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => void handleQuickAdd(code)}
+                          disabled={inPlan || addingByCourse[code]}
+                        >
+                          {addingByCourse[code] ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <>
+                              <Plus className="h-3 w-3 mr-1" />
+                              {inPlan ? "In Plan" : "Add"}
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
