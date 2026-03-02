@@ -239,10 +239,10 @@ func NewRepository(dbPath string) (*Repository, error) {
 // course_name, or professor). This lets searches like "compsci 2" or "software eng"
 // work correctly even though those strings never appear verbatim in a single column.
 //
-// Level filters by the first digit of course_number (e.g. "2" → 2000-level courses).
-// Term filters by partial match on the term string (e.g. "Fall", "Winter").
+// level filters by the first digit of course_number (e.g. "2" = 2000-level courses).
+// term filters by partial match on the term string (e.g. "Fall", "Winter").
 // Either filter is ignored when empty or "all".
-// limit <= 0 means no cap (returns all matches). offset is 0-based.
+// limit ≤ 0 means no cap (returns all matches). offset is 0-based.
 // Returns the matching page of courses plus the total number of matches.
 func (r *Repository) SearchCourses(q, level, term string, limit, offset int) ([]Course, int, error) {
 	tokens := strings.Fields(strings.TrimSpace(q))
@@ -251,7 +251,6 @@ func (r *Repository) SearchCourses(q, level, term string, limit, offset int) ([]
 	// Each condition checks all four searchable columns with OR.
 	var whereParts []string
 	var args []interface{}
-
 	for _, tok := range tokens {
 		pat := "%" + tok + "%"
 		whereParts = append(whereParts,
@@ -259,7 +258,7 @@ func (r *Repository) SearchCourses(q, level, term string, limit, offset int) ([]
 		args = append(args, pat, pat, pat, pat)
 	}
 
-	// Level filter: course number must start with the given digit (e.g. "2" → 2000-level).
+	// Level filter: course_number must start with the given digit (e.g. "2" → 2000-level).
 	if level != "" && level != "all" {
 		whereParts = append(whereParts, "course_number LIKE ?")
 		args = append(args, level+"%")
@@ -276,35 +275,35 @@ func (r *Repository) SearchCourses(q, level, term string, limit, offset int) ([]
 		where = "WHERE " + strings.Join(whereParts, " AND ")
 	}
 
-	// Count total matches (needed for pagination controls on the frontend).
+	// Count total matches first (needed for pagination metadata).
+	countQuery := fmt.Sprintf(
+		"SELECT COUNT(*) FROM courses %s", where)
 	var total int
-	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM courses %s`, where)
 	if err := r.DB.QueryRow(countQuery, args...).Scan(&total); err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("count courses: %w", err)
 	}
 
-	// Build pagination clause.
-	// limit <= 0 uses LIMIT -1 (SQLite no-limit sentinel) so offset is still honoured.
-	var limitClause string
-	paginationArgs := append([]interface{}{}, args...)
+	// Fetch the requested page.
+	var pageQuery string
+	var pageArgs []interface{}
+	pageArgs = append(pageArgs, args...)
 	if limit > 0 {
-		limitClause = "LIMIT ? OFFSET ?"
-		paginationArgs = append(paginationArgs, limit, offset)
+		pageQuery = fmt.Sprintf(
+			"SELECT id, subject, course_number, course_name, professor, term FROM courses %s ORDER BY subject, course_number LIMIT ? OFFSET ?",
+			where)
+		pageArgs = append(pageArgs, limit, offset)
 	} else {
-		limitClause = "LIMIT -1 OFFSET ?"
-		paginationArgs = append(paginationArgs, offset)
+		// LIMIT -1 is the SQLite sentinel for "no limit".
+		// We still pass OFFSET so callers can page with limit=0 + offset>0.
+		pageQuery = fmt.Sprintf(
+			"SELECT id, subject, course_number, course_name, professor, term FROM courses %s ORDER BY subject, course_number LIMIT -1 OFFSET ?",
+			where)
+		pageArgs = append(pageArgs, offset)
 	}
 
-	dataQuery := fmt.Sprintf(`
-		SELECT id, subject, course_number, course_name, professor, term
-		FROM courses
-		%s
-		ORDER BY subject, course_number
-		%s`, where, limitClause)
-
-	rows, err := r.DB.Query(dataQuery, paginationArgs...)
+	rows, err := r.DB.Query(pageQuery, pageArgs...)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("search courses: %w", err)
 	}
 	defer rows.Close()
 

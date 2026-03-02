@@ -77,13 +77,15 @@ func main() {
 		// GPA endpoint: GET /api/users/:id/gpa
 		// Must be checked before /plan to avoid prefix conflicts
 		if strings.HasSuffix(r.URL.Path, "/gpa") {
-			pkg.RequireAuth(pkg.GetUserGPAHandler(repo))(w, r)
+			pkg.RequireAuth(pkg.RequireOwner(pkg.GetUserGPAHandler(repo)))(w, r)
+
 			return
 		}
 
 		// Validation route: GET /api/users/:id/validation
 		if strings.HasSuffix(r.URL.Path, "/validation") {
-			pkg.RequireAuth(pkg.GetUserValidationHandler(repo, svc))(w, r)
+			pkg.RequireAuth(pkg.RequireOwner(pkg.GetUserValidationHandler(repo, svc)))
+
 			return
 		}
 
@@ -91,9 +93,11 @@ func main() {
 		if strings.HasSuffix(r.URL.Path, "/plan") {
 			switch r.Method {
 			case http.MethodGet:
-				pkg.RequireAuth(pkg.GetUserPlanHandler(repo, svc))(w, r)
+				pkg.RequireAuth(pkg.RequireOwner(pkg.GetUserPlanHandler(repo, svc)))
+
 			case http.MethodPost:
-				pkg.RequireAuth(pkg.PostUserPlanHandler(repo))(w, r)
+				pkg.RequireAuth(pkg.RequireOwner(pkg.PostUserPlanHandler(repo)))(w, r)
+
 			default:
 				http.NotFound(w, r)
 			}
@@ -105,9 +109,9 @@ func main() {
 			switch r.Method {
 			case http.MethodPatch:
 				// PATCH updates status + grade of a single plan item
-				pkg.RequireAuth(pkg.PatchUserPlanItemHandler(repo))(w, r)
+				pkg.RequireAuth(pkg.RequireOwner(pkg.PatchUserPlanItemHandler(repo)))(w, r)
 			case http.MethodDelete:
-				pkg.RequireAuth(pkg.DeleteUserPlanItemHandler(repo))(w, r)
+				pkg.RequireAuth(pkg.RequireOwner(pkg.DeleteUserPlanItemHandler(repo)))(w, r)
 			default:
 				http.NotFound(w, r)
 			}

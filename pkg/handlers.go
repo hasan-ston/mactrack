@@ -396,12 +396,19 @@ func CourseBySubjectNumberHandler(repo *Repository) http.HandlerFunc {
 	}
 }
 
-// CoursesHandler serves GET /api/courses?q=&level=&term=&limit=N&offset=N
-// Returns a paginated envelope: { courses, total, limit, offset }.
-// level filters by the first digit of course_number (e.g. "2" → 2000-level).
-// term filters by partial match on the term string (e.g. "Fall", "Winter").
-// Default limit is 50; pass limit=0 to return all matches.
+// CoursesHandler serves GET /api/courses?q={query}&level={digit}&term={str}&limit={n}&offset={n}
+// Returns a paginated JSON envelope:
+//
+//	{ "courses": [...], "total": N, "limit": N, "offset": N }
+//
+// limit defaults to 20; callers may raise it up to maxLimit (200).
+// level filters by course_number prefix digit (e.g. "2" = 2000-level).
+// term filters by partial match on the term column (e.g. "Fall", "Winter").
+// Multi-token AND search is handled by SearchCourses — spaces in q act as AND.
 func CoursesHandler(repo *Repository) http.HandlerFunc {
+	const defaultLimit = 20
+	const maxLimit = 200
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -409,27 +416,35 @@ func CoursesHandler(repo *Repository) http.HandlerFunc {
 		}
 
 		q := r.URL.Query().Get("q")
-		level := r.URL.Query().Get("level")
-		term := r.URL.Query().Get("term")
 
-		limit := 50
+		// Default page size = 20; callers may override with ?limit=N
+		// Capped at 200 to prevent abuse on this public endpoint.
+		limit := defaultLimit
 		if lStr := r.URL.Query().Get("limit"); lStr != "" {
-			if n, err := strconv.Atoi(lStr); err == nil {
-				limit = n
+			if l, err := strconv.Atoi(lStr); err == nil && l > 0 {
+				limit = l
 			}
+		}
+		if limit > maxLimit {
+			limit = maxLimit
 		}
 		offset := 0
 		if oStr := r.URL.Query().Get("offset"); oStr != "" {
-			if n, err := strconv.Atoi(oStr); err == nil {
-				offset = n
+			if o, err := strconv.Atoi(oStr); err == nil && o >= 0 {
+				offset = o
 			}
 		}
 
+		level := r.URL.Query().Get("level")
+		term := r.URL.Query().Get("term")
+
 		courses, total, err := repo.SearchCourses(q, level, term, limit, offset)
 		if err != nil {
+			log.Printf("search courses: %v", err)
 			http.Error(w, "failed to search courses", http.StatusInternalServerError)
 			return
 		}
+		// Return empty array instead of null when no results
 		if courses == nil {
 			courses = []Course{}
 		}

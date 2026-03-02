@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "react-router";
-import { Search, Filter, SlidersHorizontal } from "lucide-react";
+import { Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -10,8 +10,32 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { courses as mockCourses, Course as MockCourse } from "../data/mockData";
 import { CourseCard } from "../components/CourseCard";
 
+const PAGE_SIZE = 20;
+
+// Returns the page numbers (and "…" gap markers) to render in the pagination bar.
+// Always includes page 1, page total, and a ±2 window around the current page.
+// May insert "…" markers to represent gaps between non-contiguous page ranges.
+function paginationRange(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+
+  const visible = new Set<number>([1, total]);
+  for (let d = -2; d <= 2; d++) {
+    const p = current + d;
+    if (p > 1 && p < total) visible.add(p);
+  }
+
+  const sorted = [...visible].sort((a, b) => a - b);
+  const result: (number | "…")[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push("…");
+    result.push(sorted[i]);
+  }
+  return result;
+}
+
 export function CourseBrowser() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const location = useLocation();
 
   // Initialize search query from URL `?search=` param so direct links and
@@ -21,28 +45,63 @@ export function CourseBrowser() {
       const params = new URLSearchParams(location.search || "");
       const q = params.get("search") || "";
       setSearchQuery(q);
+      setDebouncedQuery(q);
     } catch (e) {
       // ignore malformed URLSearchParams
     }
   }, [location.search]);
+
+  // Debounce search input — wait 300 ms before sending to the API
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+      setCurrentPage(1); // reset to first page on new search
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   // selectedLevel holds "1000", "2000", "3000", "4000", or "all"
   const [selectedLevel, setSelectedLevel] = useState<string>("all");
   const [selectedTerm, setSelectedTerm] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("code");
   const [minRating, setMinRating] = useState<number[]>([0]);
-  const [courses, setCourses] = useState<MockCourse[]>(mockCourses);
 
+  const [courses, setCourses] = useState<MockCourse[]>(mockCourses);
+  // Seed totalCourses with mockCourses.length so the header count is non-zero
+  // before the first API response replaces it with the real backend total.
+  const [totalCourses, setTotalCourses] = useState(mockCourses.length);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Handler functions update filter + reset page in one React 18 batch so
+  // only a single fetch fires (no double-fetch from separate page-reset effect).
+  const handleLevelChange = (level: string) => {
+    setSelectedLevel(level);
+    setCurrentPage(1);
+  };
+  const handleTermChange = (term: string) => {
+    setSelectedTerm(term);
+    setCurrentPage(1);
+  };
+
+  // Fetch courses from the server with level and term as URL params.
+  // These filters are applied in the SQL WHERE clause so the server returns
+  // the correctly-filtered total and page — not just a filtered slice of one page.
   useEffect(() => {
-    // Fetch from backend API; map DB courses to mock shape with sensible defaults
-    const q = encodeURIComponent(searchQuery);
-    fetch(`/api/courses?q=${q}`)
+    const offset = (currentPage - 1) * PAGE_SIZE;
+    const params = new URLSearchParams();
+    params.set("q", debouncedQuery);
+    params.set("limit", String(PAGE_SIZE));
+    params.set("offset", String(offset));
+    if (selectedLevel !== "all") params.set("level", selectedLevel);
+    if (selectedTerm !== "all") params.set("term", selectedTerm);
+
+    fetch(`/api/courses?${params}`)
       .then((res) => {
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         return res.json();
       })
-      .then((data: any) => {
-        // Handle both bare array (legacy) and paginated envelope { courses: [...] }
-        const safeData: any[] = Array.isArray(data) ? data : (data?.courses ?? []);
+      .then((data: { courses: any[]; total: number }) => {
+        const safeData = data?.courses || [];
         const mapped: MockCourse[] = safeData.map((c) => ({
           id: String(c.id),
           code: `${c.subject} ${c.course_number}`,
@@ -59,45 +118,26 @@ export function CourseBrowser() {
           classAverage: 0,
         }));
         setCourses(mapped);
-        // Reset level filter when a new search runs so results aren't hidden
-        setSelectedLevel("all");
+        setTotalCourses(data?.total ?? 0);
       })
       .catch((err) => {
         console.error("Failed to fetch courses:", err);
-        // Clear courses so mock data doesn't mask the failure
         setCourses([]);
+        setTotalCourses(0);
       });
-  }, [searchQuery]);
+  }, [debouncedQuery, currentPage, selectedLevel, selectedTerm]);
 
-  // Derive which levels actually exist in the current result set
-  // e.g. if search returns no 4000-level courses, don't show that option
-  const availableLevels = useMemo(() => {
-    const levels = ["1", "2", "3", "4"];
-    return levels.filter(level =>
-      courses.some(c => c.code.split(" ")[1]?.startsWith(level[0]))
-    );
-  }, [courses]);
+  const totalPages = Math.max(1, Math.ceil(totalCourses / PAGE_SIZE));
 
-  // Filter and sort courses client-side after API fetch
+  // All 4 standard course levels. Since level is now a server-side filter,
+  // we always show all options rather than deriving them from the current page.
+  const ALL_LEVELS = ["1", "2", "3", "4"];
+
+  // Client-side: sort + minimum-rating filter only.
+  // Level and term are server-side so pagination is always correct.
   const filteredCourses = useMemo(() => {
-    let filtered = courses.filter(course => {
-      const matchesSearch = searchQuery === "" ||
-        course.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        course.description.toLowerCase().includes(searchQuery.toLowerCase());
-
-      // Level filter: check if course_number starts with the level's first digit
-      // e.g. "2000" level matches course codes like "2C03", "2AA3", "2EE3"
-      const courseNumber = course.code.split(" ")[1] || "";
-      const matchesLevel = selectedLevel === "all" || courseNumber.startsWith(selectedLevel[0]);
-
-      const matchesTerm = selectedTerm === "all" || course.term.includes(selectedTerm);
-      const matchesRating = course.averageRating >= minRating[0];
-
-      return matchesSearch && matchesLevel && matchesTerm && matchesRating;
-    });
-
-    filtered.sort((a, b) => {
+    const filtered = courses.filter(course => course.averageRating >= minRating[0]);
+    return [...filtered].sort((a, b) => {
       switch (sortBy) {
         case "code":
           return a.code.localeCompare(b.code);
@@ -111,9 +151,7 @@ export function CourseBrowser() {
           return 0;
       }
     });
-
-    return filtered;
-  }, [courses, searchQuery, selectedLevel, selectedTerm, sortBy, minRating]);
+  }, [courses, sortBy, minRating]);
 
   return (
     <div className="space-y-6">
@@ -121,7 +159,7 @@ export function CourseBrowser() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Browse Courses</h1>
         <p className="text-muted-foreground mt-1">
-          Explore {courses.length} courses available at McMaster University
+          Explore {totalCourses} courses available at McMaster University
         </p>
       </div>
 
@@ -166,13 +204,13 @@ export function CourseBrowser() {
               <div className="space-y-6 mt-6">
                 <div className="space-y-2">
                   <Label>Level</Label>
-                  <Select value={selectedLevel} onValueChange={setSelectedLevel}>
+                  <Select value={selectedLevel} onValueChange={handleLevelChange}>
                     <SelectTrigger>
                       <SelectValue placeholder="All Levels" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Levels</SelectItem>
-                      {availableLevels.map(level => (
+                      {ALL_LEVELS.map(level => (
                         <SelectItem key={level} value={level}>{level}-level</SelectItem>
                       ))}
                     </SelectContent>
@@ -181,7 +219,7 @@ export function CourseBrowser() {
 
                 <div className="space-y-2">
                   <Label>Term</Label>
-                  <Select value={selectedTerm} onValueChange={setSelectedTerm}>
+                  <Select value={selectedTerm} onValueChange={handleTermChange}>
                     <SelectTrigger>
                       <SelectValue placeholder="All Terms" />
                     </SelectTrigger>
@@ -215,13 +253,13 @@ export function CourseBrowser() {
       <div className="hidden md:flex gap-4 p-4 bg-muted/50 rounded-lg">
         <div className="flex-1">
           <Label className="text-sm mb-2 block">Level</Label>
-          <Select value={selectedLevel} onValueChange={setSelectedLevel}>
+          <Select value={selectedLevel} onValueChange={handleLevelChange}>
             <SelectTrigger>
               <SelectValue placeholder="All Levels" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Levels</SelectItem>
-              {availableLevels.map(level => (
+              {ALL_LEVELS.map(level => (
                 <SelectItem key={level} value={level}>{level}-level</SelectItem>
               ))}
             </SelectContent>
@@ -230,7 +268,7 @@ export function CourseBrowser() {
 
         <div className="flex-1">
           <Label className="text-sm mb-2 block">Term</Label>
-          <Select value={selectedTerm} onValueChange={setSelectedTerm}>
+          <Select value={selectedTerm} onValueChange={handleTermChange}>
             <SelectTrigger>
               <SelectValue placeholder="All Terms" />
             </SelectTrigger>
@@ -262,7 +300,12 @@ export function CourseBrowser() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {filteredCourses.length} of {courses.length} courses
+            {minRating[0] > 0 && filteredCourses.length < courses.length
+              // min-rating client filter narrowed the page — note both counts
+              ? `${filteredCourses.length} of ${totalCourses} total · page ${currentPage} of ${totalPages}`
+              // Server handles all other filters — show a clean summary
+              : `${totalCourses} total${totalPages > 1 ? ` · page ${currentPage} of ${totalPages}` : ""}`
+            }
           </p>
           {(searchQuery || selectedLevel !== "all" || selectedTerm !== "all" || minRating[0] > 0) && (
             <Button
@@ -273,6 +316,7 @@ export function CourseBrowser() {
                 setSelectedLevel("all");
                 setSelectedTerm("all");
                 setMinRating([0]);
+                setCurrentPage(1);
               }}
             >
               Clear Filters
@@ -293,6 +337,49 @@ export function CourseBrowser() {
             {filteredCourses.map(course => (
               <CourseCard key={course.id} course={course} />
             ))}
+          </div>
+        )}
+
+        {/* Pagination controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Previous
+            </Button>
+
+            {/* Page number chips — show first, last, and a ±2 window around
+                 currentPage. May insert "…" gap markers for non-contiguous ranges. */}
+            {paginationRange(currentPage, totalPages).map((p, i) =>
+              p === "…" ? (
+                <span key={`ellipsis-${i}`} className="px-2 text-muted-foreground">…</span>
+              ) : (
+                <Button
+                  key={p}
+                  variant={currentPage === p ? "default" : "outline"}
+                  size="sm"
+                  className="w-9"
+                  onClick={() => setCurrentPage(p as number)}
+                >
+                  {p}
+                </Button>
+              )
+            )}
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
           </div>
         )}
       </div>

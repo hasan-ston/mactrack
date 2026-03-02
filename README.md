@@ -11,18 +11,9 @@
 ## Database
 1. Use the migrations in the `migrations/` folder to set up your database schema.
 2. Example (SQLite):
-	- sqlite3 database/courses.db < migrations/001_seed_data.sql
-	- sqlite3 database/courses.db < migrations/002_schema_extend.sql
-	- sqlite3 database/courses.db < migrations/003_test_queries.sql
-	- sqlite3 database/courses.db < migrations/004_degree_planner.sql
-	- sqlite3 database/courses.db < migrations/005_add_coid_to_courses.sql
-	- sqlite3 database/courses.db < migrations/006_requisites_seed.sql
-	- sqlite3 database/courses.db < migrations/007_backfill_coids.sql
-	- sqlite3 database/courses.db < migrations/008_users_program_year.sql
-	- sqlite3 database/courses.db < migrations/009_programs_seed.sql
-	- sqlite3 database/courses.db < migrations/010_requirement_groups_seed.sql
-	- sqlite3 database/courses.db < migrations/011_requirement_courses_seed.sql
-	- sqlite3 database/courses.db < migrations/012_missing_courses.sql
+	- sqlite3 database/courses.db < migrations/000_baseline.sql
+
+3. Or, run: ./scripts/db_setup.sh
 
 
 
