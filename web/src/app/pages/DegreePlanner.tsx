@@ -97,12 +97,12 @@ export function DegreePlanner() {
 
   const [filterSubject, setFilterSubject] = useState<string>("ALL");
   const [filterLevel, setFilterLevel] = useState<string>("ALL");
-  const [filterOfferingSeason, setFilterOfferingSeason] = useState<string>("ALL");
+  const [filterTerm, setFilterTerm] = useState<string>("ALL");
 
   const subjectOptions = Array.from(new Set(searchResults.map(c => c.subject))).sort((a, b) => a.localeCompare(b));
 
   const levelOptions = ["1", "2", "3", "4"] as const;
-  const offeringSeasonOptions = ["Fall", "Winter", "Spring", "Summer"] as const;
+  const termOptions = ["Fall", "Winter", "Spring", "Summer"] as const;
 
   // Fetch plan on mount
   useEffect(() => {
@@ -151,7 +151,7 @@ export function DegreePlanner() {
     if (!dialogOpen) {
       setFilterSubject("ALL");
       setFilterLevel("ALL");
-      setFilterOfferingSeason("ALL");
+      setFilterTerm("ALL");
     }
   }, [dialogOpen]);
 
@@ -228,9 +228,9 @@ export function DegreePlanner() {
       if (!lvl || lvl.toString() !== filterLevel) return false;
     }
 
-    if (filterOfferingSeason !== "ALL") {
+    if (filterTerm !== "ALL") {
       const s = seasonFromOfferingTerm(c.term);
-      if (s !== filterOfferingSeason) return false;
+      if (s !== filterTerm) return false;
     }
 
     return true;
@@ -323,123 +323,16 @@ export function DegreePlanner() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Offering Season</Label>
-                  <Select value={filterOfferingSeason} onValueChange={setFilterOfferingSeason}>
+                  <Label>Term</Label>
+                  <Select value={filterTerm} onValueChange={setFilterTerm}>
                     <SelectTrigger>
-                      <SelectValue placeholder="All seasons" />
+                      <SelectValue placeholder="All terms" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">All seasons</SelectItem>
-                      {offeringSeasonOptions.map(season => (
+                      <SelectItem value="ALL">All terms</SelectItem>
+                      {termOptions.map(season => (
                         <SelectItem key={season} value={season}>
                           {season}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-2">
-                  <Label>Subject</Label>
-                  <Select value={filterSubject} onValueChange={setFilterSubject}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">All</SelectItem>
-                      {subjectOptions.map((subj) => (
-                        <SelectItem key={subj} value={subj}>
-                          {subj}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Level</Label>
-                  <Select value={filterLevel} onValueChange={setFilterLevel}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">All</SelectItem>
-                      {levelOptions.map((lvl) => (
-                        <SelectItem key={lvl} value={lvl}>
-                          {lvl}xxx
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Offered</Label>
-                  <Select value={filterOfferingSeason} onValueChange={setFilterOfferingSeason}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">All</SelectItem>
-                      {offeringSeasonOptions.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-2">
-                  <Label>Subject</Label>
-                  <Select value={filterSubject} onValueChange={setFilterSubject}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">All</SelectItem>
-                      {subjectOptions.map((subj) => (
-                        <SelectItem key={subj} value={subj}>
-                          {subj}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Level</Label>
-                  <Select value={filterLevel} onValueChange={setFilterLevel}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">All</SelectItem>
-                      {levelOptions.map((lvl) => (
-                        <SelectItem key={lvl} value={lvl}>
-                          {lvl}xxx
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Offered</Label>
-                  <Select value={filterOfferingSeason} onValueChange={setFilterOfferingSeason}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">All</SelectItem>
-                      {offeringSeasonOptions.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {s}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -454,7 +347,7 @@ export function DegreePlanner() {
                   </div>
                 ) : filteredResults.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
-                    {searchQuery ? "No courses found" : (filterSubject !== "ALL" || filterLevel !== "ALL" || filterOfferingSeason !== "ALL") ? "No courses match your filters" : "Start typing to search courses"}
+                    {searchQuery ? "No courses found" : (filterSubject !== "ALL" || filterLevel !== "ALL" || filterTerm !== "ALL") ? "No courses match your filters" : "Start typing to search courses"}
                   </p>
                 ) : (
                   filteredResults.map(course => (
