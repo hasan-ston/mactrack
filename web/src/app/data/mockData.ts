@@ -30,6 +30,40 @@ export const subjectColors: Record<string, { bg: string; text: string; darkBg: s
   ECON: { bg: "bg-amber-100", text: "text-amber-700", darkBg: "dark:bg-amber-950 dark:text-amber-300" },
 };
 
+// Palette used for subjects not in the static map above.
+// Colors are cycled deterministically based on the subject string so the same
+// subject always gets the same color across all pages.
+const _colorPalette = [
+  { bg: "bg-blue-100",    text: "text-blue-700",    darkBg: "dark:bg-blue-950 dark:text-blue-300" },
+  { bg: "bg-indigo-100",  text: "text-indigo-700",  darkBg: "dark:bg-indigo-950 dark:text-indigo-300" },
+  { bg: "bg-violet-100",  text: "text-violet-700",  darkBg: "dark:bg-violet-950 dark:text-violet-300" },
+  { bg: "bg-purple-100",  text: "text-purple-700",  darkBg: "dark:bg-purple-950 dark:text-purple-300" },
+  { bg: "bg-pink-100",    text: "text-pink-700",    darkBg: "dark:bg-pink-950 dark:text-pink-300" },
+  { bg: "bg-rose-100",    text: "text-rose-700",    darkBg: "dark:bg-rose-950 dark:text-rose-300" },
+  { bg: "bg-red-100",     text: "text-red-700",     darkBg: "dark:bg-red-950 dark:text-red-300" },
+  { bg: "bg-orange-100",  text: "text-orange-700",  darkBg: "dark:bg-orange-950 dark:text-orange-300" },
+  { bg: "bg-amber-100",   text: "text-amber-700",   darkBg: "dark:bg-amber-950 dark:text-amber-300" },
+  { bg: "bg-yellow-100",  text: "text-yellow-700",  darkBg: "dark:bg-yellow-950 dark:text-yellow-300" },
+  { bg: "bg-lime-100",    text: "text-lime-700",    darkBg: "dark:bg-lime-950 dark:text-lime-300" },
+  { bg: "bg-green-100",   text: "text-green-700",   darkBg: "dark:bg-green-950 dark:text-green-300" },
+  { bg: "bg-emerald-100", text: "text-emerald-700", darkBg: "dark:bg-emerald-950 dark:text-emerald-300" },
+  { bg: "bg-teal-100",    text: "text-teal-700",    darkBg: "dark:bg-teal-950 dark:text-teal-300" },
+  { bg: "bg-cyan-100",    text: "text-cyan-700",    darkBg: "dark:bg-cyan-950 dark:text-cyan-300" },
+  { bg: "bg-sky-100",     text: "text-sky-700",     darkBg: "dark:bg-sky-950 dark:text-sky-300" },
+];
+
+/** Returns a color object for any subject string — uses the static map when
+ *  available, otherwise deterministically picks from the palette by hashing. */
+export function getSubjectColor(subject: string): { bg: string; text: string; darkBg: string } {
+  if (subjectColors[subject]) return subjectColors[subject];
+  // Simple djb2-style hash over the subject characters
+  let hash = 5381;
+  for (let i = 0; i < subject.length; i++) {
+    hash = (hash * 33) ^ subject.charCodeAt(i);
+  }
+  return _colorPalette[Math.abs(hash) % _colorPalette.length];
+}
+
 export interface Professor {
   id: string;
   name: string;

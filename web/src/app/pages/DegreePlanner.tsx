@@ -11,7 +11,7 @@ import { Label } from "../components/ui/label";
 import { useAuth } from "../contexts/AuthContext";
 import { authFetch } from "../lib/api";
 import { unitsFromCourseNumber } from "../lib/courseUtils";
-import { subjectColors } from "../data/mockData";
+import { getSubjectColor } from "../data/mockData";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -366,7 +366,7 @@ export function DegreePlanner() {
                   </p>
                 ) : (
                   filteredResults.map(course => {
-                    const sc = subjectColors[course.subject] ?? { bg: "bg-gray-100", text: "text-gray-700", darkBg: "dark:bg-gray-900 dark:text-gray-300" };
+                    const sc = getSubjectColor(course.subject);
                     return (
                     <button
                       key={`${course.subject}-${course.course_number}-${course.term}`}
@@ -381,7 +381,7 @@ export function DegreePlanner() {
                             <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold border border-transparent ${sc.bg} ${sc.text} ${sc.darkBg}`}>
                               {course.subject}
                             </span>
-                            <span className="font-medium">{courseCode(course)}</span>
+                            <span className="font-medium">{course.course_number}</span>
                           </div>
                           <div className="text-sm text-muted-foreground mt-0.5 truncate">{course.course_name}</div>
                         </div>
@@ -525,7 +525,7 @@ export function DegreePlanner() {
                           </p>
                         ) : (
                           termCourses.map(item => {
-                            const sc = subjectColors[item.subject] ?? { bg: "bg-gray-100", text: "text-gray-700", darkBg: "dark:bg-gray-900 dark:text-gray-300" };
+                            const sc = getSubjectColor(item.subject);
                             return (
                             <div
                               key={planItemKey(item)}
