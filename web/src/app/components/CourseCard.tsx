@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { AddToPlannerDialog } from "./AddToPlannerDialog";
 import { parseCourseCode } from "../lib/courseUtils";
-import { subjectColors, type Course } from "../data/mockData";
+import { getSubjectColor, type Course } from "../data/mockData";
 
 interface CourseCardProps {
   course: Course;
@@ -44,11 +44,7 @@ function DifficultyBar({ difficulty }: { difficulty: number }) {
 
 export function CourseCard({ course }: CourseCardProps) {
   const { subject } = parseCourseCode(course.code);
-  const subjectColor = subjectColors[course.subject] ?? {
-    bg: "bg-gray-100",
-    text: "text-gray-700",
-    darkBg: "dark:bg-gray-900 dark:text-gray-300",
-  };
+  const subjectColor = getSubjectColor(course.subject);
 
   return (
     <div className="relative group">
