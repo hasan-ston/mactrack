@@ -1,4 +1,5 @@
 import { RouterProvider } from "react-router";
+import { ThemeProvider } from "next-themes";
 import { router } from "./routes";
 import { AuthProvider } from "./contexts/AuthContext";
 
@@ -8,8 +9,10 @@ import { AuthProvider } from "./contexts/AuthContext";
 // localStorage, so no initialization step is needed here.
 export default function App() {
   return (
-    <AuthProvider>
-      <RouterProvider router={router} />
-    </AuthProvider>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
