@@ -82,9 +82,15 @@ export function CourseCard({ course }: CourseCardProps) {
             {/* Rating row */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <RatingStars rating={course.averageRating} />
-                <span className="text-sm font-semibold text-foreground">{course.averageRating.toFixed(1)}</span>
-                <span className="text-xs text-muted-foreground">({course.reviewCount})</span>
+                {course.averageRating > 0 ? (
+                  <>
+                    <RatingStars rating={course.averageRating} />
+                    <span className="text-sm font-semibold text-foreground">{course.averageRating.toFixed(1)}</span>
+                    <span className="text-xs text-muted-foreground">({course.reviewCount})</span>
+                  </>
+                ) : (
+                  <span className="text-xs text-muted-foreground">No reviews yet</span>
+                )}
               </div>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Users className="h-3.5 w-3.5" />
@@ -96,11 +102,15 @@ export function CourseCard({ course }: CourseCardProps) {
             <div className="flex items-center justify-between pt-2 border-t border-border">
               <div className="flex flex-col gap-0.5">
                 <span className="text-xs text-muted-foreground">Difficulty</span>
-                <DifficultyBar difficulty={course.difficulty} />
+                {course.difficulty > 0 ? (
+                  <DifficultyBar difficulty={course.difficulty} />
+                ) : (
+                  <span className="text-xs text-muted-foreground">N/A</span>
+                )}
               </div>
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <TrendingUp className="h-3.5 w-3.5" />
-                <span>Avg: <span className="font-medium text-foreground">{course.classAverage}%</span></span>
+                <span>Avg: <span className="font-medium text-foreground">{course.classAverage > 0 ? `${course.classAverage}%` : "N/A"}</span></span>
               </div>
             </div>
 

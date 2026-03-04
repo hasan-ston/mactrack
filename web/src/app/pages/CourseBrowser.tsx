@@ -114,9 +114,9 @@ export function CourseBrowser() {
           description: c.course_name || "",
           prerequisites: [],
           term: c.term || "",
-          averageRating: 0,
-          difficulty: 0,
-          reviewCount: 0,
+          averageRating: c.avg_rating ?? 0,
+          difficulty: c.avg_difficulty ?? 0,
+          reviewCount: c.num_ratings ?? 0,
           professors: c.professor ? [c.professor] : [],
           classAverage: 0,
         }));
