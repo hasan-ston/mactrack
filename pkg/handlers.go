@@ -877,6 +877,40 @@ func CourseRequisitesHandler(repo *Repository) http.HandlerFunc {
 	}
 }
 
+// CourseInstructorsHandler serves GET /api/courses/:id/instructors
+// Returns instructors linked to a specific course via course_instructors table.
+func CourseInstructorsHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse course ID from path: /api/courses/:id/instructors
+		path := strings.TrimPrefix(r.URL.Path, "/api/courses/")
+		path = strings.TrimSuffix(path, "/instructors")
+		courseID, err := strconv.Atoi(strings.Trim(path, "/"))
+		if err != nil || courseID == 0 {
+			http.Error(w, "invalid course id", http.StatusBadRequest)
+			return
+		}
+
+		instructors, err := repo.GetInstructorsByCourseID(courseID)
+		if err != nil {
+			log.Printf("get course instructors error: %v", err)
+			http.Error(w, "failed to get course instructors", http.StatusInternalServerError)
+			return
+		}
+
+		if instructors == nil {
+			instructors = []Instructor{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(instructors)
+	}
+}
+
 // InstructorsHandler serves GET /api/instructors
 // Supports query params: q (search), department, min_rating, limit, offset
 func InstructorsHandler(repo *Repository) http.HandlerFunc {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router";
-import { ArrowLeft, BookOpen, Users, Star, TrendingUp, Clock, CheckCircle2, BarChart3 } from "lucide-react";
+import { ArrowLeft, Users, Star, TrendingUp, Clock, CheckCircle2, BarChart3 } from "lucide-react";
 import { AddToPlannerDialog } from "../components/AddToPlannerDialog";
 import { unitsFromCourseNumber } from "../lib/courseUtils";
 import { Button } from "../components/ui/button";
@@ -79,42 +79,20 @@ export function CourseDetail() {
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [instructorsLoading, setInstructorsLoading] = useState(false);
 
-  // Helper to extract professor names
-  const getProfessorNames = (professorString: string | null | undefined): string[] => {
-    if (!professorString) return [];
-    return [
-      ...new Set(
-        professorString
-          .split(/,?\u000a|,/)
-          .map((name) => name.trim())
-          .filter((name) => name !== "" && name.toLowerCase() !== "staff" && name.toLowerCase() !== "tba")
-      ),
-    ];
-  };
-
-  // Step 3: fetch instructor RMP data
+  // Step 3: fetch instructor RMP data for this course
   useEffect(() => {
-    if (!course || !course.professor) return;
-
-    const professorNames = getProfessorNames(course.professor);
-    if (professorNames.length === 0) return;
+    if (!course) return;
 
     setInstructorsLoading(true);
-    
-    // Fetch all instructors and filter by name on client side
-    // This is a simpler approach than implementing search by name on backend
-    fetch(`/api/instructors?limit=500`)
-      .then((res) => res.json())
-      .then((data) => {
-        const allInstructors = data.instructors || [];
-        // Match by normalized name
-        const matched = allInstructors.filter((inst: Instructor) => 
-          professorNames.some((name) => 
-            inst.name.toLowerCase().includes(name.toLowerCase()) ||
-            name.toLowerCase().includes(inst.name.toLowerCase().split(" ").pop() || "")
-          )
-        );
-        setInstructors(matched);
+
+    // Use the dedicated backend endpoint that queries course_instructors
+    fetch(`${API_BASE}/api/courses/${course.id}/instructors`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        return res.json();
+      })
+      .then((data: Instructor[]) => {
+        setInstructors(data || []);
       })
       .catch((err) => console.error("Failed to fetch instructors:", err))
       .finally(() => setInstructorsLoading(false));
@@ -272,15 +250,23 @@ export function CourseDetail() {
           </div>
         </div>
 
-        {/* Quick Stats — placeholders for data not yet in DB */}
+        {/* Quick Stats — shows RMP data from linked instructors when available */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2">
                 <Star className="h-5 w-5 text-[#ffc845]" />
                 <div>
-                  <div className="text-2xl font-bold text-primary">—</div>
-                  <div className="text-xs text-muted-foreground">No reviews yet</div>
+                  <div className="text-2xl font-bold text-primary">
+                    {instructors.length > 0 && instructors.some(i => i.avg_rating != null)
+                      ? (instructors.reduce((sum, i) => sum + (i.avg_rating ?? 0), 0) / instructors.filter(i => i.avg_rating != null).length).toFixed(1)
+                      : "—"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {instructors.length > 0 && instructors.some(i => i.avg_rating != null)
+                      ? "Prof Rating"
+                      : "No reviews yet"}
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -301,10 +287,18 @@ export function CourseDetail() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-primary" />
+                <BarChart3 className="h-5 w-5 text-primary" />
                 <div>
-                  <div className="text-2xl font-bold text-primary">—</div>
-                  <div className="text-xs text-muted-foreground">Difficulty</div>
+                  <div className="text-2xl font-bold text-primary">
+                    {instructors.length > 0 && instructors.some(i => i.avg_difficulty != null)
+                      ? (instructors.reduce((sum, i) => sum + (i.avg_difficulty ?? 0), 0) / instructors.filter(i => i.avg_difficulty != null).length).toFixed(1)
+                      : "—"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {instructors.length > 0 && instructors.some(i => i.avg_difficulty != null)
+                      ? "Difficulty"
+                      : "Difficulty"}
+                  </div>
                 </div>
               </div>
             </CardContent>

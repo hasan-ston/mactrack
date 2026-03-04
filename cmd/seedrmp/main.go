@@ -170,10 +170,37 @@ func linkInstructorsToCourses(db *sql.DB) (int, error) {
 
 	splitRegex := regexp.MustCompile(`[,\n\r]+`)
 
-	linkStmt := `
+	// Exact match by full normalized name
+	exactStmt, err := db.Prepare(`
 		INSERT OR IGNORE INTO course_instructors (course_row_id, instructor_id)
 		SELECT ?, instructor_id FROM instructors WHERE name_normalized = ?
-	`
+	`)
+	if err != nil {
+		return 0, err
+	}
+	defer exactStmt.Close()
+
+	// Fuzzy: match by last name where there's exactly one instructor with that last name
+	// This catches "Kee Howe Yong" matching "Kee Yong" (last name = yong)
+	fuzzyStmt, err := db.Prepare(`
+		INSERT OR IGNORE INTO course_instructors (course_row_id, instructor_id)
+		SELECT ?, instructor_id FROM instructors
+		WHERE (
+			-- last word in the normalized name matches the course professor's last word
+			substr(name_normalized, instr(name_normalized, ' ') + 1) = ?
+			OR name_normalized LIKE ? 
+		)
+		AND (
+			-- first name/initial also matches to avoid false positives
+			substr(name_normalized, 1, instr(name_normalized, ' ') - 1) = ?
+			OR substr(name_normalized, 1, 1) = ?
+		)
+		LIMIT 1
+	`)
+	if err != nil {
+		return 0, err
+	}
+	defer fuzzyStmt.Close()
 
 	count := 0
 	tx, err := db.Begin()
@@ -181,12 +208,6 @@ func linkInstructorsToCourses(db *sql.DB) (int, error) {
 		return 0, err
 	}
 	defer tx.Rollback()
-
-	stmt, err := tx.Prepare(linkStmt)
-	if err != nil {
-		return 0, err
-	}
-	defer stmt.Close()
 
 	for _, course := range courses {
 		rawNames := splitRegex.Split(course.Professor, -1)
@@ -204,13 +225,34 @@ func linkInstructorsToCourses(db *sql.DB) (int, error) {
 			}
 			seenForCourse[normalizedName] = true
 
-			result, err := stmt.Exec(course.ID, normalizedName)
+			// Try exact match first
+			result, err := tx.Stmt(exactStmt).Exec(course.ID, normalizedName)
 			if err != nil {
 				log.Printf("Error linking instructor %s to course %d: %v", name, course.ID, err)
 				continue
 			}
-
 			rowsAffected, _ := result.RowsAffected()
+			if rowsAffected > 0 {
+				count++
+				continue
+			}
+
+			// Exact match failed — try fuzzy matching by last name + first initial
+			parts := strings.Fields(normalizedName)
+			if len(parts) < 2 {
+				continue
+			}
+			firstName := parts[0]
+			lastName := parts[len(parts)-1]
+			firstInitial := string(firstName[0])
+			lastNameLike := "%" + lastName
+
+			result, err = tx.Stmt(fuzzyStmt).Exec(course.ID, lastName, lastNameLike, firstName, firstInitial)
+			if err != nil {
+				log.Printf("Error fuzzy-linking instructor %s to course %d: %v", name, course.ID, err)
+				continue
+			}
+			rowsAffected, _ = result.RowsAffected()
 			if rowsAffected > 0 {
 				count++
 			}

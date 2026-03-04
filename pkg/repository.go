@@ -863,6 +863,101 @@ func (r *Repository) GetInstructorCourses(instructorID int) ([]Course, error) {
 	return out, rows.Err()
 }
 
+// GetInstructorsByCourseID fetches all instructors linked to a given course.
+func (r *Repository) GetInstructorsByCourseID(courseID int) ([]Instructor, error) {
+	rows, err := r.DB.Query(`
+		SELECT i.instructor_id, i.name, i.department, i.external_source, i.external_id, i.external_url,
+		       i.ext_avg_rating, i.ext_avg_difficulty, i.ext_num_ratings, i.ext_last_scraped
+		FROM instructors i
+		JOIN course_instructors ci ON i.instructor_id = ci.instructor_id
+		WHERE ci.course_row_id = ?
+		ORDER BY i.name
+	`, courseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []Instructor{}
+	for rows.Next() {
+		var i Instructor
+		var dept, extSource, extID, extURL, lastScraped sql.NullString
+		var avgRating, avgDiff sql.NullFloat64
+		var numRatings sql.NullInt64
+		if err := rows.Scan(&i.ID, &i.Name, &dept, &extSource, &extID, &extURL, &avgRating, &avgDiff, &numRatings, &lastScraped); err != nil {
+			return nil, err
+		}
+		i.Department = dept.String
+		i.ExternalSource = extSource.String
+		i.ExternalID = extID.String
+		i.ExternalURL = extURL.String
+		if avgRating.Valid {
+			i.AvgRating = &avgRating.Float64
+		}
+		if avgDiff.Valid {
+			i.AvgDifficulty = &avgDiff.Float64
+		}
+		if numRatings.Valid {
+			n := int(numRatings.Int64)
+			i.NumRatings = &n
+		}
+		i.LastScraped = lastScraped.String
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
+// GetInstructorsByName fetches instructors matching a professor name using fuzzy matching.
+func (r *Repository) GetInstructorsByName(name string) ([]Instructor, error) {
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	if normalized == "" {
+		return nil, nil
+	}
+	parts := strings.Fields(normalized)
+	lastName := parts[len(parts)-1]
+
+	rows, err := r.DB.Query(`
+		SELECT instructor_id, name, department, external_source, external_id, external_url,
+		       ext_avg_rating, ext_avg_difficulty, ext_num_ratings, ext_last_scraped
+		FROM instructors
+		WHERE name_normalized = ?
+		   OR (name_normalized LIKE ? AND substr(name_normalized, 1, 1) = ?)
+		ORDER BY name
+	`, normalized, "%"+lastName, string(normalized[0]))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []Instructor{}
+	for rows.Next() {
+		var i Instructor
+		var dept, extSource, extID, extURL, lastScraped sql.NullString
+		var avgRating, avgDiff sql.NullFloat64
+		var numRatings sql.NullInt64
+		if err := rows.Scan(&i.ID, &i.Name, &dept, &extSource, &extID, &extURL, &avgRating, &avgDiff, &numRatings, &lastScraped); err != nil {
+			return nil, err
+		}
+		i.Department = dept.String
+		i.ExternalSource = extSource.String
+		i.ExternalID = extID.String
+		i.ExternalURL = extURL.String
+		if avgRating.Valid {
+			i.AvgRating = &avgRating.Float64
+		}
+		if avgDiff.Valid {
+			i.AvgDifficulty = &avgDiff.Float64
+		}
+		if numRatings.Valid {
+			n := int(numRatings.Int64)
+			i.NumRatings = &n
+		}
+		i.LastScraped = lastScraped.String
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
 // GetInstructorWithCourses fetches an instructor with their courses.
 func (r *Repository) GetInstructorWithCourses(id int) (*InstructorWithCourses, error) {
 	inst, err := r.GetInstructorByID(id)

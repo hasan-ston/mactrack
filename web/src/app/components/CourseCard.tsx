@@ -33,16 +33,24 @@ export function CourseCard({ course }: CourseCardProps) {
 
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center space-x-4">
-                <div className="flex items-center">
-                  <Star className="h-4 w-4 fill-[#ffc845] text-[#ffc845] mr-1" />
-                  <span className="font-medium">{course.averageRating.toFixed(1)}</span>
-                  <span className="text-muted-foreground ml-1">({course.reviewCount})</span>
-                </div>
+                {course.averageRating > 0 ? (
+                  <>
+                    <div className="flex items-center">
+                      <Star className="h-4 w-4 fill-[#ffc845] text-[#ffc845] mr-1" />
+                      <span className="font-medium">{course.averageRating.toFixed(1)}</span>
+                      <span className="text-muted-foreground ml-1">({course.reviewCount})</span>
+                    </div>
 
-                <div className="flex items-center text-muted-foreground">
-                  <TrendingUp className="h-4 w-4 mr-1" />
-                  <span>Avg: {course.classAverage}%</span>
-                </div>
+                    {course.classAverage > 0 && (
+                      <div className="flex items-center text-muted-foreground">
+                        <TrendingUp className="h-4 w-4 mr-1" />
+                        <span>Avg: {course.classAverage}%</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-muted-foreground text-xs">No reviews yet</span>
+                )}
               </div>
 
               <Badge variant="outline">

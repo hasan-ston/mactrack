@@ -57,6 +57,12 @@ func main() {
 			return
 		}
 
+		// Dispatch: GET /api/courses/:id/instructors
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/instructors") {
+			pkg.CourseInstructorsHandler(repo)(w, r)
+			return
+		}
+
 		// Dispatch by subject+number: GET /api/courses/<subject>/<number>
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/courses/"), "/")
 		if r.Method == http.MethodGet && len(parts) == 2 && parts[1] != "" {

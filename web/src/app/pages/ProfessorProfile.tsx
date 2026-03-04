@@ -1,10 +1,9 @@
 import { useParams, Link } from "react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Users, Star, BookOpen, TrendingUp, BarChart3 } from "lucide-react";
+import { ArrowLeft, Users, Star, BookOpen } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { RatingDisplay } from "../components/RatingDisplay";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -79,7 +78,7 @@ export function ProfessorProfile() {
           {error || "The professor profile you're looking for doesn't exist."}
         </p>
         <Button asChild>
-          <Link to="/instructors">Browse Professors</Link>
+          <Link to="/professors">Browse Professors</Link>
         </Button>
       </div>
     );
@@ -91,7 +90,7 @@ export function ProfessorProfile() {
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Back Button */}
       <Button asChild variant="ghost" size="sm">
-        <Link to="/instructors">
+        <Link to="/professors">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Professors
         </Link>
