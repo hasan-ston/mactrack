@@ -675,3 +675,231 @@ func (r *Repository) GetUserByID(id int) (*User, error) {
 	}
 	return &u, nil
 }
+
+// SearchInstructors searches instructors by name or department.
+// Supports filtering by min_rating and department.
+// limit ≤ 0 means no cap. offset is 0-based.
+// Returns the matching page of instructors plus the total number of matches.
+func (r *Repository) SearchInstructors(q, department string, minRating float64, limit, offset int) ([]Instructor, int, error) {
+	var whereParts []string
+	var args []interface{}
+
+	// Search by name or department
+	if q != "" {
+		pat := "%" + q + "%"
+		whereParts = append(whereParts, "(name LIKE ? OR department LIKE ?)")
+		args = append(args, pat, pat)
+	}
+
+	// Department filter
+	if department != "" && department != "all" {
+		whereParts = append(whereParts, "department = ?")
+		args = append(args, department)
+	}
+
+	// Min rating filter
+	if minRating > 0 {
+		whereParts = append(whereParts, "ext_avg_rating >= ?")
+		args = append(args, minRating)
+	}
+
+	where := ""
+	if len(whereParts) > 0 {
+		where = "WHERE " + strings.Join(whereParts, " AND ")
+	}
+
+	// Count total matches
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM instructors %s", where)
+	var total int
+	if err := r.DB.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count instructors: %w", err)
+	}
+
+	// Fetch the requested page
+	var pageQuery string
+	pageArgs := append([]interface{}{}, args...)
+	if limit > 0 {
+		pageQuery = fmt.Sprintf(`
+			SELECT instructor_id, name, department, external_source, external_id, external_url,
+			       ext_avg_rating, ext_avg_difficulty, ext_num_ratings, ext_last_scraped
+			FROM instructors %s ORDER BY name LIMIT ? OFFSET ?`, where)
+		pageArgs = append(pageArgs, limit, offset)
+	} else {
+		pageQuery = fmt.Sprintf(`
+			SELECT instructor_id, name, department, external_source, external_id, external_url,
+			       ext_avg_rating, ext_avg_difficulty, ext_num_ratings, ext_last_scraped
+			FROM instructors %s ORDER BY name LIMIT -1 OFFSET ?`, where)
+		pageArgs = append(pageArgs, offset)
+	}
+
+	rows, err := r.DB.Query(pageQuery, pageArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("search instructors: %w", err)
+	}
+	defer rows.Close()
+
+	out := []Instructor{}
+	for rows.Next() {
+		var i Instructor
+		var dept, extSource, extID, extURL, lastScraped sql.NullString
+		var avgRating, avgDiff sql.NullFloat64
+		var numRatings sql.NullInt64
+		if err := rows.Scan(&i.ID, &i.Name, &dept, &extSource, &extID, &extURL, &avgRating, &avgDiff, &numRatings, &lastScraped); err != nil {
+			return nil, 0, err
+		}
+		i.Department = dept.String
+		i.ExternalSource = extSource.String
+		i.ExternalID = extID.String
+		i.ExternalURL = extURL.String
+		if avgRating.Valid {
+			i.AvgRating = &avgRating.Float64
+		}
+		if avgDiff.Valid {
+			i.AvgDifficulty = &avgDiff.Float64
+		}
+		if numRatings.Valid {
+			n := int(numRatings.Int64)
+			i.NumRatings = &n
+		}
+		i.LastScraped = lastScraped.String
+		out = append(out, i)
+	}
+	return out, total, rows.Err()
+}
+
+// GetInstructorByID fetches a single instructor by their internal ID.
+func (r *Repository) GetInstructorByID(id int) (*Instructor, error) {
+	row := r.DB.QueryRow(`
+		SELECT instructor_id, name, department, external_source, external_id, external_url,
+		       ext_avg_rating, ext_avg_difficulty, ext_num_ratings, ext_last_scraped
+		FROM instructors WHERE instructor_id = ?`, id)
+	var i Instructor
+	var dept, extSource, extID, extURL, lastScraped sql.NullString
+	var avgRating, avgDiff sql.NullFloat64
+	var numRatings sql.NullInt64
+	if err := row.Scan(&i.ID, &i.Name, &dept, &extSource, &extID, &extURL, &avgRating, &avgDiff, &numRatings, &lastScraped); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	i.Department = dept.String
+	i.ExternalSource = extSource.String
+	i.ExternalID = extID.String
+	i.ExternalURL = extURL.String
+	if avgRating.Valid {
+		i.AvgRating = &avgRating.Float64
+	}
+	if avgDiff.Valid {
+		i.AvgDifficulty = &avgDiff.Float64
+	}
+	if numRatings.Valid {
+		n := int(numRatings.Int64)
+		i.NumRatings = &n
+	}
+	i.LastScraped = lastScraped.String
+	return &i, nil
+}
+
+// GetInstructorByExternalID fetches a single instructor by their external ID (e.g., RMP ID).
+func (r *Repository) GetInstructorByExternalID(externalID string) (*Instructor, error) {
+	row := r.DB.QueryRow(`
+		SELECT instructor_id, name, department, external_source, external_id, external_url,
+		       ext_avg_rating, ext_avg_difficulty, ext_num_ratings, ext_last_scraped
+		FROM instructors WHERE external_id = ?`, externalID)
+	var i Instructor
+	var dept, extSource, extID, extURL, lastScraped sql.NullString
+	var avgRating, avgDiff sql.NullFloat64
+	var numRatings sql.NullInt64
+	if err := row.Scan(&i.ID, &i.Name, &dept, &extSource, &extID, &extURL, &avgRating, &avgDiff, &numRatings, &lastScraped); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	i.Department = dept.String
+	i.ExternalSource = extSource.String
+	i.ExternalID = extID.String
+	i.ExternalURL = extURL.String
+	if avgRating.Valid {
+		i.AvgRating = &avgRating.Float64
+	}
+	if avgDiff.Valid {
+		i.AvgDifficulty = &avgDiff.Float64
+	}
+	if numRatings.Valid {
+		n := int(numRatings.Int64)
+		i.NumRatings = &n
+	}
+	i.LastScraped = lastScraped.String
+	return &i, nil
+}
+
+// GetInstructorCourses fetches courses taught by a given instructor.
+func (r *Repository) GetInstructorCourses(instructorID int) ([]Course, error) {
+	rows, err := r.DB.Query(`
+		SELECT c.id, c.subject, c.course_number, c.course_name, c.professor, c.term
+		FROM courses c
+		JOIN course_instructors ci ON c.id = ci.course_row_id
+		WHERE ci.instructor_id = ?
+		ORDER BY c.subject, c.course_number
+	`, instructorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []Course{}
+	for rows.Next() {
+		var c Course
+		var courseName, professor sql.NullString
+		if err := rows.Scan(&c.ID, &c.Subject, &c.CourseNumber, &courseName, &professor, &c.Term); err != nil {
+			return nil, err
+		}
+		c.CourseName = courseName.String
+		c.Professor = professor.String
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// GetInstructorWithCourses fetches an instructor with their courses.
+func (r *Repository) GetInstructorWithCourses(id int) (*InstructorWithCourses, error) {
+	inst, err := r.GetInstructorByID(id)
+	if err != nil || inst == nil {
+		return nil, err
+	}
+
+	courses, err := r.GetInstructorCourses(id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &InstructorWithCourses{
+		Instructor: *inst,
+		Courses:    courses,
+	}, nil
+}
+
+// GetAllDepartments returns a list of all distinct departments from instructors.
+func (r *Repository) GetAllDepartments() ([]string, error) {
+	rows, err := r.DB.Query(`
+		SELECT DISTINCT department FROM instructors
+		WHERE department IS NOT NULL AND department != ''
+		ORDER BY department
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deps []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			return nil, err
+		}
+		deps = append(deps, d)
+	}
+	return deps, rows.Err()
+}

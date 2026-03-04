@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router";
-import { ArrowLeft, BookOpen, Users, Star, TrendingUp, Clock, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, BookOpen, Users, Star, TrendingUp, Clock, CheckCircle2, BarChart3 } from "lucide-react";
 import { AddToPlannerDialog } from "../components/AddToPlannerDialog";
 import { unitsFromCourseNumber } from "../lib/courseUtils";
 import { Button } from "../components/ui/button";
@@ -9,6 +9,8 @@ import { Badge } from "../components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Separator } from "../components/ui/separator";
 import { Progress } from "../components/ui/progress";
+
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 // Shape returned by GET /api/courses/:id
 interface ApiCourse {
@@ -31,6 +33,16 @@ interface RequisitesResponse {
   PREREQ: RequisiteRow[];
   COREQ: RequisiteRow[];
   ANTIREQ: RequisiteRow[];
+}
+
+interface Instructor {
+  instructor_id: number;
+  name: string;
+  department: string;
+  avg_rating: number | null;
+  avg_difficulty: number | null;
+  num_ratings: number | null;
+  external_url: string;
 }
 
 // Cleans up the professor field from the courses table.
@@ -62,6 +74,51 @@ export function CourseDetail() {
   const [requisitesLoading, setRequisitesLoading] = useState(false);
 
   const [isAdded, setIsAdded] = useState(false);
+
+  // Instructor RMP data
+  const [instructors, setInstructors] = useState<Instructor[]>([]);
+  const [instructorsLoading, setInstructorsLoading] = useState(false);
+
+  // Helper to extract professor names
+  const getProfessorNames = (professorString: string | null | undefined): string[] => {
+    if (!professorString) return [];
+    return [
+      ...new Set(
+        professorString
+          .split(/,?\u000a|,/)
+          .map((name) => name.trim())
+          .filter((name) => name !== "" && name.toLowerCase() !== "staff" && name.toLowerCase() !== "tba")
+      ),
+    ];
+  };
+
+  // Step 3: fetch instructor RMP data
+  useEffect(() => {
+    if (!course || !course.professor) return;
+
+    const professorNames = getProfessorNames(course.professor);
+    if (professorNames.length === 0) return;
+
+    setInstructorsLoading(true);
+    
+    // Fetch all instructors and filter by name on client side
+    // This is a simpler approach than implementing search by name on backend
+    fetch(`/api/instructors?limit=500`)
+      .then((res) => res.json())
+      .then((data) => {
+        const allInstructors = data.instructors || [];
+        // Match by normalized name
+        const matched = allInstructors.filter((inst: Instructor) => 
+          professorNames.some((name) => 
+            inst.name.toLowerCase().includes(name.toLowerCase()) ||
+            name.toLowerCase().includes(inst.name.toLowerCase().split(" ").pop() || "")
+          )
+        );
+        setInstructors(matched);
+      })
+      .catch((err) => console.error("Failed to fetch instructors:", err))
+      .finally(() => setInstructorsLoading(false));
+  }, [course]);
 
   // Step 1: fetch the course by its numeric DB id
   useEffect(() => {
@@ -382,7 +439,77 @@ export function CourseDetail() {
         </TabsContent>
 
         <TabsContent value="professors" className="space-y-4">
-          {course.professor ? (
+          {instructorsLoading ? (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground">
+                Loading professor information...
+              </CardContent>
+            </Card>
+          ) : instructors.length > 0 ? (
+            <div className="space-y-4">
+              {instructors.map((instructor) => (
+                <Card key={instructor.instructor_id}>
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-4">
+                      <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center shrink-0">
+                        <Users className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-lg font-semibold">{instructor.name}</h3>
+                          <Link to={`/professors/${instructor.instructor_id}`}>
+                            <Badge variant="outline" className="cursor-pointer hover:bg-muted">
+                              View Profile
+                            </Badge>
+                          </Link>
+                        </div>
+                        {instructor.department && (
+                          <p className="text-sm text-muted-foreground">{instructor.department}</p>
+                        )}
+                        
+                        {/* RMP Ratings */}
+                        <div className="mt-3 flex items-center gap-6">
+                          {instructor.avg_rating != null ? (
+                            <div className="flex items-center gap-1">
+                              <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
+                              <span className="font-semibold">{instructor.avg_rating.toFixed(1)}</span>
+                              <span className="text-muted-foreground">/ 5.0</span>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">No rating</span>
+                          )}
+                          {instructor.num_ratings != null && (
+                            <span className="text-sm text-muted-foreground">
+                              {instructor.num_ratings} reviews
+                            </span>
+                          )}
+                          {instructor.avg_difficulty != null && (
+                            <div className="flex items-center gap-1">
+                              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm text-muted-foreground">
+                                {instructor.avg_difficulty.toFixed(1)} difficulty
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {instructor.external_url && (
+                          <a
+                            href={instructor.external_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 hover:underline mt-2 inline-block"
+                          >
+                            View on RateMyProfessors →
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : course.professor ? (
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
@@ -395,6 +522,9 @@ export function CourseDetail() {
                     <p className="text-sm text-muted-foreground">{course.subject}</p>
                   </div>
                 </div>
+                <p className="mt-4 text-sm text-muted-foreground">
+                  No RMP ratings available for this professor.
+                </p>
               </CardContent>
             </Card>
           ) : (

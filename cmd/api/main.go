@@ -72,6 +72,31 @@ func main() {
 	http.HandleFunc("/api/programs", pkg.ProgramsHandler(repo))
 	http.HandleFunc("/api/programs/", pkg.ProgramRequirementsHandler(repo))
 
+	// --- Instructor routes (public) ---
+	http.HandleFunc("/api/instructors", pkg.InstructorsHandler(repo))
+	http.HandleFunc("/api/instructors/", func(w http.ResponseWriter, r *http.Request) {
+		// Dispatch: GET /api/instructors/departments
+		if r.Method == http.MethodGet && r.URL.Path == "/api/instructors/departments" {
+			pkg.DepartmentsHandler(repo)(w, r)
+			return
+		}
+
+		// Dispatch: GET /api/instructors/external/:external_id
+		if r.Method == http.MethodGet && strings.HasPrefix(strings.TrimPrefix(r.URL.Path, "/api/instructors/"), "external/") {
+			pkg.InstructorByExternalIDHandler(repo)(w, r)
+			return
+		}
+
+		// Dispatch: GET /api/instructors/:id/courses
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/courses") {
+			pkg.InstructorCoursesHandler(repo)(w, r)
+			return
+		}
+
+		// Fallback: GET /api/instructors/:id
+		pkg.InstructorHandler(repo)(w, r)
+	})
+
 	// --- User/plan routes (protected — JWT required) ---
 	http.HandleFunc("/api/users/", func(w http.ResponseWriter, r *http.Request) {
 		// GPA endpoint: GET /api/users/:id/gpa

@@ -1898,7 +1898,13 @@ INSERT OR IGNORE INTO requirement_courses VALUES(2144,548,15,NULL,'','',0,'All L
 INSERT OR IGNORE INTO requirement_courses VALUES(2145,548,16,292929,'NEUROSCI 3J03','Visual Neuroscience',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(2146,548,17,293919,'NEUROSCI 3MN3','Computational Models in Neuroscience',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(2147,548,18,292714,'NEUROSCI 3SN3','Neural Circuits',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(2148,548,19,NULL,'','',0,unistr('All Level III and IV PNB courses with no more than 6 units from the following courses:\u000a\u000a\u000a\u0009PNB 3Q03\u000a\u0009PNB 3QQ3\u000a\u0009PNB 4Q03\u000a\u0009PNB 4QQ3'));
+INSERT OR IGNORE INTO requirement_courses VALUES(2148,548,19,NULL,'','',0,'All Level III and IV PNB courses with no more than 6 units from the following courses:
+
+
+	PNB 3Q03
+	PNB 3QQ3
+	PNB 4Q03
+	PNB 4QQ3');
 INSERT OR IGNORE INTO requirement_courses VALUES(2149,548,20,NULL,'','',0,'PNB 3Q03');
 INSERT OR IGNORE INTO requirement_courses VALUES(2150,548,21,NULL,'','',0,'PNB 3QQ3');
 INSERT OR IGNORE INTO requirement_courses VALUES(2151,548,22,NULL,'','',0,'PNB 4Q03');
@@ -2018,7 +2024,10 @@ INSERT OR IGNORE INTO requirement_courses VALUES(2264,633,1,NULL,'','',0,'Levels
 INSERT OR IGNORE INTO requirement_courses VALUES(2265,634,1,NULL,'','',0,'Courses specified for the other subject');
 INSERT OR IGNORE INTO requirement_courses VALUES(2266,635,1,292186,'SOCIOL 2Z03','Introduction to Sociological Research',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(2267,635,2,292763,'SOCIOL 3FF3','Introduction to Quantitative Research Methods',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(2268,635,3,NULL,'','',0,unistr('or\u000a\u000a\u000a\u0009in combined programs within the Faculty of Social Sciences, the six units Research Methods/Statistics course specified for the other subject (See Notes 2 and 4 above.)'));
+INSERT OR IGNORE INTO requirement_courses VALUES(2268,635,3,NULL,'','',0,'or
+
+
+	in combined programs within the Faculty of Social Sciences, the six units Research Methods/Statistics course specified for the other subject (See Notes 2 and 4 above.)');
 INSERT OR IGNORE INTO requirement_courses VALUES(2269,635,4,NULL,'','',0,'in combined programs within the Faculty of Social Sciences, the six units Research Methods/Statistics course specified for the other subject (See Notes 2 and 4 above.)');
 INSERT OR IGNORE INTO requirement_courses VALUES(2270,640,1,292286,'THTRFLM 3AA3','Modernist Theatre and Drama in Europe',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(2271,640,2,NULL,'','',0,'THTRFLM 3DD3');
@@ -4401,7 +4410,10 @@ INSERT OR IGNORE INTO requirement_courses VALUES(4647,1277,2,NULL,'','',0,'or');
 INSERT OR IGNORE INTO requirement_courses VALUES(4648,1277,3,291992,'POLSCI 2M03','Governance, Representation, and Participation in Democracies',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(4649,1278,1,292723,'POLSCI 3CL3','Constitutional and Public Law in Canada',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(4650,1278,2,292726,'POLSCI 3RF3','The Charter of Rights and Freedoms',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(4651,1278,3,NULL,'','',0,unistr('or\u000a\u000a\u000a\u0009POLSCI 3NN6 A/B'));
+INSERT OR IGNORE INTO requirement_courses VALUES(4651,1278,3,NULL,'','',0,'or
+
+
+	POLSCI 3NN6 A/B');
 INSERT OR IGNORE INTO requirement_courses VALUES(4652,1278,4,NULL,'','',0,'POLSCI 3NN6 A/B');
 INSERT OR IGNORE INTO requirement_courses VALUES(4653,1279,1,NULL,'','',0,'from the Public Law and Judicial Studies Course List');
 INSERT OR IGNORE INTO requirement_courses VALUES(4654,1280,1,NULL,'','',0,'Level II, III Political Science of which a maximum of 3 units may be Level II');
@@ -4490,7 +4502,8 @@ INSERT OR IGNORE INTO requirement_courses VALUES(4736,1300,9,293927,'PNB 3V03','
 INSERT OR IGNORE INTO requirement_courses VALUES(4737,1301,1,NULL,'','',0,'Psychology, Neuroscience & Behaviour Course List (See Notes 3 and 6 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(4738,1304,1,NULL,'','',0,'Psychology, Neuroscience & Behaviour Course List (See Notes 3 and 6 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(4739,1305,1,291982,'','View course details for PNB 4D09 A/B - Senior Honours Thesis',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(4740,1305,2,NULL,'','',0,unistr('6 units from the Capstone Course List and 3 units from the Psychology, Neuroscience & Behaviour Course List\u000a\u0009(See Notes 2, 3 and 6 above)'));
+INSERT OR IGNORE INTO requirement_courses VALUES(4740,1305,2,NULL,'','',0,'6 units from the Capstone Course List and 3 units from the Psychology, Neuroscience & Behaviour Course List
+	(See Notes 2, 3 and 6 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(4741,1308,1,NULL,'','',0,'(See Admission above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(4742,1310,1,291965,'PNB 2XA3','Human Perception & Cognition',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(4743,1310,2,291966,'PNB 2XB3','Neuroanatomy & Neurophysiology',0,NULL);
@@ -4517,7 +4530,8 @@ INSERT OR IGNORE INTO requirement_courses VALUES(4763,1315,11,293927,'PNB 3V03',
 INSERT OR IGNORE INTO requirement_courses VALUES(4764,1316,1,NULL,'','',0,'Psychology, Neuroscience & Behaviour Course List (See Note 6 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(4765,1319,1,NULL,'','',0,'Psychology, Neuroscience & Behaviour Course List (See Note 6 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(4766,1320,1,291982,'','View course details for PNB 4D09 A/B - Senior Honours Thesis',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(4767,1320,2,NULL,'','',0,unistr('6 units from Capstone Course List and 3 units from Psychology, Neuroscience & Behaviour Course List\u000a\u0009(See Note 6 above)'));
+INSERT OR IGNORE INTO requirement_courses VALUES(4767,1320,2,NULL,'','',0,'6 units from Capstone Course List and 3 units from Psychology, Neuroscience & Behaviour Course List
+	(See Note 6 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(4768,1323,1,NULL,'','',0,'(See Admission above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(4769,1325,1,291965,'PNB 2XA3','Human Perception & Cognition',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(4770,1325,2,291966,'PNB 2XB3','Neuroanatomy & Neurophysiology',0,NULL);
@@ -4540,7 +4554,8 @@ INSERT OR IGNORE INTO requirement_courses VALUES(4786,1330,7,293927,'PNB 3V03','
 INSERT OR IGNORE INTO requirement_courses VALUES(4787,1331,1,NULL,'','',0,'Psychology, Neuroscience & Behaviour Course List (See Notes 3 and 6 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(4788,1334,1,NULL,'','',0,'Psychology, Neuroscience & Behaviour Course List (See Notes 3 and 6 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(4789,1335,1,291982,'','View course details for PNB 4D09 A/B - Senior Honours Thesis',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(4790,1335,2,NULL,'','',0,unistr('6 units from the Capstone Course List and 3 units from the Psychology, Neuroscience & Behaviour Course List\u000a\u0009(See Note 2 above)'));
+INSERT OR IGNORE INTO requirement_courses VALUES(4790,1335,2,NULL,'','',0,'6 units from the Capstone Course List and 3 units from the Psychology, Neuroscience & Behaviour Course List
+	(See Note 2 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(4791,1339,1,291981,'','View course details for PNB 4D06 A/B - Senior Thesis',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(4792,1339,2,292601,'PNB 4E03','Topics in Social Diversity',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(4793,1339,3,291983,'PNB 4J03','Inquiry in Psychology, Neuroscience & Behaviour',0,NULL);
@@ -4761,7 +4776,8 @@ INSERT OR IGNORE INTO requirement_courses VALUES(5007,1413,1,NULL,'','',0,'Psych
 INSERT OR IGNORE INTO requirement_courses VALUES(5008,1414,1,292781,'MUSICCOG 3SP3','The Science of Performance',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(5009,1414,2,292487,'MUSICCOG 4MP3','Neuroscience of Music',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(5010,1415,1,291982,'','View course details for PNB 4D09 A/B - Senior Honours Thesis',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(5011,1415,2,NULL,'','',0,unistr('6 units from Capstone Course List and 3 units from Psychology, Neuroscience & Behaviour Course List\u000a\u0009(See Notes 5 and 6 above)'));
+INSERT OR IGNORE INTO requirement_courses VALUES(5011,1415,2,NULL,'','',0,'6 units from Capstone Course List and 3 units from Psychology, Neuroscience & Behaviour Course List
+	(See Notes 5 and 6 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(5012,1420,1,291965,'PNB 2XA3','Human Perception & Cognition',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(5013,1420,2,291966,'PNB 2XB3','Neuroanatomy & Neurophysiology',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(5014,1420,3,291967,'PNB 2XC3','Animal Behaviour & Evolution',0,NULL);
@@ -4794,7 +4810,8 @@ INSERT OR IGNORE INTO requirement_courses VALUES(5040,1433,1,NULL,'','',0,'Psych
 INSERT OR IGNORE INTO requirement_courses VALUES(5041,1434,1,292781,'MUSICCOG 3SP3','The Science of Performance',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(5042,1434,2,292487,'MUSICCOG 4MP3','Neuroscience of Music',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(5043,1435,1,291982,'','View course details for PNB 4D09 A/B - Senior Honours Thesis',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(5044,1435,2,NULL,'','',0,unistr('6 units from Capstone Course List and 3 units from Psychology, Neuroscience & Behaviour Course List\u000a\u0009(See Notes 5 and 6 above)'));
+INSERT OR IGNORE INTO requirement_courses VALUES(5044,1435,2,NULL,'','',0,'6 units from Capstone Course List and 3 units from Psychology, Neuroscience & Behaviour Course List
+	(See Notes 5 and 6 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(5045,1440,1,291965,'PNB 2XA3','Human Perception & Cognition',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(5046,1440,2,291966,'PNB 2XB3','Neuroanatomy & Neurophysiology',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(5047,1440,3,291967,'PNB 2XC3','Animal Behaviour & Evolution',0,NULL);
@@ -4821,7 +4838,8 @@ INSERT OR IGNORE INTO requirement_courses VALUES(5067,1452,1,NULL,'','',0,'Psych
 INSERT OR IGNORE INTO requirement_courses VALUES(5068,1453,1,292781,'MUSICCOG 3SP3','The Science of Performance',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(5069,1453,2,292487,'MUSICCOG 4MP3','Neuroscience of Music',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(5070,1454,1,291982,'','View course details for PNB 4D09 A/B - Senior Honours Thesis',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(5071,1454,2,NULL,'','',0,unistr('6 units from Capstone Course List and 3 units from Psychology, Neuroscience & Behaviour Course List\u000a\u0009(See Notes 5 and 6 above)'));
+INSERT OR IGNORE INTO requirement_courses VALUES(5071,1454,2,NULL,'','',0,'6 units from Capstone Course List and 3 units from Psychology, Neuroscience & Behaviour Course List
+	(See Notes 5 and 6 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(5072,1459,1,NULL,'','',0,'the Level I program completed prior to admission to the program (See Admission above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(5073,1460,1,NULL,'','',0,'Level II Society, Culture & Religion');
 INSERT OR IGNORE INTO requirement_courses VALUES(5074,1461,1,NULL,'','',0,'Level III Society, Culture & Religion');
@@ -5788,7 +5806,8 @@ INSERT OR IGNORE INTO requirement_courses VALUES(6034,1766,5,292479,'PSYCH 2GG3'
 INSERT OR IGNORE INTO requirement_courses VALUES(6035,1767,1,290855,'MATH 1F03','Introduction to Calculus and Analytic Geometry',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(6036,1767,2,290856,'MATH 1K03','Advanced Functions',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(6037,1767,3,293498,'STATS 1LL3','Introduction to Probability and Statistics',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(6038,1767,4,NULL,'','',0,unistr('(If requirement completed in Level I, or students have one of MHF4U, MCV4U, or MDM4U, these units will be taken as non-psychology electives.) \u000a(See Note 1 above.)'));
+INSERT OR IGNORE INTO requirement_courses VALUES(6038,1767,4,NULL,'','',0,'(If requirement completed in Level I, or students have one of MHF4U, MCV4U, or MDM4U, these units will be taken as non-psychology electives.) 
+(See Note 1 above.)');
 INSERT OR IGNORE INTO requirement_courses VALUES(6039,1771,1,NULL,'','',0,'Psychology Course List, of which at least nine units must be from Level III (See Note 4 above)');
 INSERT OR IGNORE INTO requirement_courses VALUES(6040,1777,1,NULL,'','',0,'the Level I program completed prior to admission to the program. (See Admission above.)');
 INSERT OR IGNORE INTO requirement_courses VALUES(6041,1778,1,NULL,'','',0,'Level II Society, Culture & Religion');
@@ -6004,7 +6023,8 @@ INSERT OR IGNORE INTO requirement_courses VALUES(6250,1889,1,291531,'ECON 1BB3',
 INSERT OR IGNORE INTO requirement_courses VALUES(6251,1889,2,NULL,'','',0,'ECON 1BX3');
 INSERT OR IGNORE INTO requirement_courses VALUES(6252,1890,1,290851,'MATH 1A03','Calculus For Science I',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(6253,1890,2,290857,'MATH 1LS3','Calculus for the Life Sciences I',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(6254,1890,3,NULL,'','',0,unistr('MATH 1M03\u000a\u0009(See Program Note 2 regarding the Minor in Mathematics)'));
+INSERT OR IGNORE INTO requirement_courses VALUES(6254,1890,3,NULL,'','',0,'MATH 1M03
+	(See Program Note 2 regarding the Minor in Mathematics)');
 INSERT OR IGNORE INTO requirement_courses VALUES(6255,1891,1,290855,'MATH 1F03','Introduction to Calculus and Analytic Geometry',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(6256,1892,1,NULL,'','',0,'Non-Commerce electives to total 30 units');
 INSERT OR IGNORE INTO requirement_courses VALUES(6257,1896,1,NULL,'','',0,'COMMERCE 2GR0 A/B - DeGroote Student Experience and Development II');
@@ -6052,7 +6072,8 @@ INSERT OR IGNORE INTO requirement_courses VALUES(6298,1948,1,291530,'ECON 1B03',
 INSERT OR IGNORE INTO requirement_courses VALUES(6299,1948,2,291531,'ECON 1BB3','Introductory Macroeconomics',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(6300,1949,1,290851,'MATH 1A03','Calculus For Science I',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(6301,1949,2,290857,'MATH 1LS3','Calculus for the Life Sciences I',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(6302,1949,3,NULL,'','',0,unistr('MATH 1M03\u000a\u0009(See Program Note 4 regarding the Math Minor)'));
+INSERT OR IGNORE INTO requirement_courses VALUES(6302,1949,3,NULL,'','',0,'MATH 1M03
+	(See Program Note 4 regarding the Math Minor)');
 INSERT OR IGNORE INTO requirement_courses VALUES(6303,1950,1,290855,'MATH 1F03','Introduction to Calculus and Analytic Geometry',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(6304,1951,1,NULL,'','',0,'STATS 1L03 (for those students without Grade 12 Mathematics of Data Management U or equivalent)');
 INSERT OR IGNORE INTO requirement_courses VALUES(6305,1956,1,291293,'COMMERCE 2AB3','Managerial Accounting I',0,NULL);
@@ -16312,7 +16333,10 @@ INSERT OR IGNORE INTO requirement_courses VALUES(16558,6695,1,291987,'POLSCI 2D0
 INSERT OR IGNORE INTO requirement_courses VALUES(16559,6695,2,292647,'POLSCI 2C03','Force and Fear, Crime and Punishment',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(16560,6696,1,292723,'POLSCI 3CL3','Constitutional and Public Law in Canada',0,NULL);
 INSERT OR IGNORE INTO requirement_courses VALUES(16561,6696,2,292726,'POLSCI 3RF3','The Charter of Rights and Freedoms',0,NULL);
-INSERT OR IGNORE INTO requirement_courses VALUES(16562,6696,3,NULL,'','',0,unistr('or\u000a\u000a\u000a\u0009POLSCI 3NN6 A/B'));
+INSERT OR IGNORE INTO requirement_courses VALUES(16562,6696,3,NULL,'','',0,'or
+
+
+	POLSCI 3NN6 A/B');
 INSERT OR IGNORE INTO requirement_courses VALUES(16563,6696,4,NULL,'','',0,'POLSCI 3NN6 A/B');
 INSERT OR IGNORE INTO requirement_courses VALUES(16564,6697,1,NULL,'','',0,'from the Multidisciplinary Course List (See Note 2)');
 INSERT OR IGNORE INTO requirement_courses VALUES(16565,6698,1,290950,'ANTHROP 3FA3','Forensic Anthropology',1,NULL);

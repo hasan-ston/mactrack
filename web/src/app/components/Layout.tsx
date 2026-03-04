@@ -34,6 +34,16 @@ export function Layout() {
               Browse Courses
             </Link>
             <Link 
+              to="/professors" 
+              className={`text-sm font-medium transition-colors ${
+                location.pathname.startsWith('/professors') 
+                  ? 'text-[#ffc845]' 
+                  : 'text-white hover:text-[#ffc845]'
+              }`}
+            >
+              Browse Professors
+            </Link>
+            <Link 
               to="/dashboard" 
               className={`text-sm font-medium transition-colors ${
                 location.pathname === '/dashboard' 
