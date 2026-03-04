@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LogIn,
   User,
+  Users,
   Menu,
   X,
   Sun,
@@ -54,6 +55,7 @@ function ThemeToggle() {
 
 const navLinks = [
   { to: "/courses", label: "Browse Courses", icon: BookOpen, match: (p: string) => p.startsWith("/courses") },
+  { to: "/professors", label: "Browse Professors", icon: Users, match: (p: string) => p.startsWith("/professors") },
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, match: (p: string) => p === "/dashboard" },
   { to: "/planner", label: "Degree Planner", icon: GraduationCap, match: (p: string) => p === "/planner" },
 ];

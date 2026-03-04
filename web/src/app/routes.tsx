@@ -4,6 +4,7 @@ import { Home } from "./pages/Home";
 import { CourseBrowser } from "./pages/CourseBrowser";
 import { CourseDetail } from "./pages/CourseDetail";
 import { ProfessorProfile } from "./pages/ProfessorProfile";
+import { BrowseInstructors } from "./pages/BrowseInstructors";
 import { UserDashboard } from "./pages/UserDashboard";
 import { DegreePlanner } from "./pages/DegreePlanner";
 import Login from "./pages/Login";
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
       { path: "courses", Component: CourseBrowser },
       { path: "courses/:courseId", Component: CourseDetail },
       { path: "courses/:subject/:courseNumber", Component: CourseDetail },
+      { path: "professors", Component: BrowseInstructors },
       { path: "professors/:professorId", Component: ProfessorProfile },
       { path: "dashboard", Component: UserDashboard },
       { path: "planner", Component: DegreePlanner },

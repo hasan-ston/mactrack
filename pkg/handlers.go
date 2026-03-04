@@ -876,3 +876,276 @@ func CourseRequisitesHandler(repo *Repository) http.HandlerFunc {
 		json.NewEncoder(w).Encode(grouped)
 	}
 }
+
+// CourseInstructorsHandler serves GET /api/courses/:id/instructors
+// Returns instructors linked to a specific course via course_instructors table.
+func CourseInstructorsHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse course ID from path: /api/courses/:id/instructors
+		path := strings.TrimPrefix(r.URL.Path, "/api/courses/")
+		path = strings.TrimSuffix(path, "/instructors")
+		courseID, err := strconv.Atoi(strings.Trim(path, "/"))
+		if err != nil || courseID == 0 {
+			http.Error(w, "invalid course id", http.StatusBadRequest)
+			return
+		}
+
+		instructors, err := repo.GetInstructorsByCourseID(courseID)
+		if err != nil {
+			log.Printf("get course instructors error: %v", err)
+			http.Error(w, "failed to get course instructors", http.StatusInternalServerError)
+			return
+		}
+
+		if instructors == nil {
+			instructors = []Instructor{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(instructors)
+	}
+}
+
+// InstructorsHandler serves GET /api/instructors
+// Supports query params: q (search), department, min_rating, limit, offset
+func InstructorsHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		q := r.URL.Query().Get("q")
+		department := r.URL.Query().Get("department")
+		minRatingStr := r.URL.Query().Get("min_rating")
+		limitStr := r.URL.Query().Get("limit")
+		offsetStr := r.URL.Query().Get("offset")
+
+		var minRating float64
+		if minRatingStr != "" {
+			var err error
+			minRating, err = strconv.ParseFloat(minRatingStr, 64)
+			if err != nil || minRating < 0 {
+				http.Error(w, "invalid min_rating", http.StatusBadRequest)
+				return
+			}
+		}
+
+		limit := 20
+		if limitStr != "" {
+			var err error
+			limit, err = strconv.Atoi(limitStr)
+			if err != nil || limit < 0 {
+				http.Error(w, "invalid limit", http.StatusBadRequest)
+				return
+			}
+		}
+
+		offset := 0
+		if offsetStr != "" {
+			var err error
+			offset, err = strconv.Atoi(offsetStr)
+			if err != nil || offset < 0 {
+				http.Error(w, "invalid offset", http.StatusBadRequest)
+				return
+			}
+		}
+
+		instructors, total, err := repo.SearchInstructors(q, department, minRating, limit, offset)
+		if err != nil {
+			log.Printf("search instructors error: %v", err)
+			http.Error(w, "failed to search instructors", http.StatusInternalServerError)
+			return
+		}
+
+		// Return empty array instead of null
+		if instructors == nil {
+			instructors = []Instructor{}
+		}
+
+		type response struct {
+			Instructors []Instructor `json:"instructors"`
+			Total       int          `json:"total"`
+			Limit       int          `json:"limit"`
+			Offset      int          `json:"offset"`
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response{
+			Instructors: instructors,
+			Total:       total,
+			Limit:       limit,
+			Offset:      offset,
+		})
+	}
+}
+
+// InstructorHandler serves GET /api/instructors/:id
+// Returns instructor details with optional courses query param
+func InstructorHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse instructor ID from path: /api/instructors/:id
+		idStr := strings.TrimPrefix(r.URL.Path, "/api/instructors/")
+		instructorID, err := strconv.Atoi(strings.Trim(idStr, "/"))
+		if err != nil || instructorID == 0 {
+			http.Error(w, "invalid instructor id", http.StatusBadRequest)
+			return
+		}
+
+		// Check if we should include courses
+		includeCourses := r.URL.Query().Get("courses") == "true"
+
+		instructor, err := repo.GetInstructorByID(instructorID)
+		if err != nil {
+			log.Printf("get instructor error: %v", err)
+			http.Error(w, "failed to get instructor", http.StatusInternalServerError)
+			return
+		}
+		if instructor == nil {
+			http.Error(w, "instructor not found", http.StatusNotFound)
+			return
+		}
+
+		if includeCourses {
+			courses, err := repo.GetInstructorCourses(instructorID)
+			if err != nil {
+				log.Printf("get instructor courses error: %v", err)
+				http.Error(w, "failed to get instructor courses", http.StatusInternalServerError)
+				return
+			}
+			if courses == nil {
+				courses = []Course{}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(InstructorWithCourses{
+				Instructor: *instructor,
+				Courses:    courses,
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(instructor)
+	}
+}
+
+// InstructorByExternalIDHandler serves GET /api/instructors/external/:external_id
+// Returns instructor details by their external ID (e.g., RMP ID)
+func InstructorByExternalIDHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse external ID from path: /api/instructors/external/:external_id
+		idStr := strings.TrimPrefix(r.URL.Path, "/api/instructors/external/")
+		externalID := strings.Trim(idStr, "/")
+		if externalID == "" {
+			http.Error(w, "invalid external id", http.StatusBadRequest)
+			return
+		}
+
+		includeCourses := r.URL.Query().Get("courses") == "true"
+
+		instructor, err := repo.GetInstructorByExternalID(externalID)
+		if err != nil {
+			log.Printf("get instructor by external ID error: %v", err)
+			http.Error(w, "failed to get instructor", http.StatusInternalServerError)
+			return
+		}
+		if instructor == nil {
+			http.Error(w, "instructor not found", http.StatusNotFound)
+			return
+		}
+
+		if includeCourses {
+			courses, err := repo.GetInstructorCourses(instructor.ID)
+			if err != nil {
+				log.Printf("get instructor courses error: %v", err)
+				http.Error(w, "failed to get instructor courses", http.StatusInternalServerError)
+				return
+			}
+			if courses == nil {
+				courses = []Course{}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(InstructorWithCourses{
+				Instructor: *instructor,
+				Courses:    courses,
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(instructor)
+	}
+}
+
+// InstructorCoursesHandler serves GET /api/instructors/:id/courses
+func InstructorCoursesHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse instructor ID from path: /api/instructors/:id/courses
+		idStr := strings.TrimPrefix(r.URL.Path, "/api/instructors/")
+		idStr = strings.TrimSuffix(idStr, "/courses")
+		instructorID, err := strconv.Atoi(strings.Trim(idStr, "/"))
+		if err != nil || instructorID == 0 {
+			http.Error(w, "invalid instructor id", http.StatusBadRequest)
+			return
+		}
+
+		courses, err := repo.GetInstructorCourses(instructorID)
+		if err != nil {
+			log.Printf("get instructor courses error: %v", err)
+			http.Error(w, "failed to get instructor courses", http.StatusInternalServerError)
+			return
+		}
+
+		if courses == nil {
+			courses = []Course{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(courses)
+	}
+}
+
+// DepartmentsHandler serves GET /api/instructors/departments
+// Returns all distinct departments from instructors
+func DepartmentsHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		departments, err := repo.GetAllDepartments()
+		if err != nil {
+			log.Printf("get departments error: %v", err)
+			http.Error(w, "failed to get departments", http.StatusInternalServerError)
+			return
+		}
+
+		if departments == nil {
+			departments = []string{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(departments)
+	}
+}

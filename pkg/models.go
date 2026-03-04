@@ -19,6 +19,24 @@ type Professor struct {
 	Courses []int  `json:"courses"`
 }
 
+type Instructor struct {
+	ID             int      `json:"instructor_id"`
+	Name           string   `json:"name"`
+	Department     string   `json:"department,omitempty"`
+	ExternalSource string   `json:"external_source,omitempty"`
+	ExternalID     string   `json:"external_id,omitempty"`
+	ExternalURL    string   `json:"external_url,omitempty"`
+	AvgRating      *float64 `json:"avg_rating,omitempty"`
+	AvgDifficulty  *float64 `json:"avg_difficulty,omitempty"`
+	NumRatings     *int     `json:"num_ratings,omitempty"`
+	LastScraped    string   `json:"last_scraped,omitempty"`
+}
+
+type InstructorWithCourses struct {
+	Instructor
+	Courses []Course `json:"courses"`
+}
+
 type Review struct {
 	ID         int     `json:"id"`
 	TargetType string  `json:"target_type"` // "course" or "professor"

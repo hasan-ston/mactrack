@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router";
-import { ArrowLeft, BookOpen, Users, Star, TrendingUp, Clock, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, BarChart3, BookOpen, Users, Star, TrendingUp, Clock, CheckCircle2 } from "lucide-react";
 import { AddToPlannerDialog } from "../components/AddToPlannerDialog";
 import { unitsFromCourseNumber } from "../lib/courseUtils";
 import { Button } from "../components/ui/button";
@@ -33,6 +33,20 @@ interface RequisitesResponse {
   ANTIREQ: RequisiteRow[];
 }
 
+// Shape returned by GET /api/courses/:id/instructors
+interface Instructor {
+  instructor_id: number;
+  name: string;
+  department: string;
+  external_source: string;
+  external_id: string;
+  external_url: string;
+  avg_rating: number | null;
+  avg_difficulty: number | null;
+  num_ratings: number | null;
+  last_scraped: string;
+}
+
 // Cleans up the professor field from the courses table.
 // The DB stores multiple professors delimited by \u000a (newline),
 // and sometimes duplicates the same name — this handles both cases.
@@ -62,6 +76,10 @@ export function CourseDetail() {
   const [requisitesLoading, setRequisitesLoading] = useState(false);
 
   const [isAdded, setIsAdded] = useState(false);
+
+  // Instructors linked to this course (from RMP data)
+  const [instructors, setInstructors] = useState<Instructor[]>([]);
+  const [instructorsLoading, setInstructorsLoading] = useState(false);
 
   // Step 1: fetch the course by its numeric DB id
   useEffect(() => {
@@ -107,6 +125,17 @@ export function CourseDetail() {
       .then((data: RequisitesResponse) => setRequisites(data))
       .catch(err => console.error("Failed to fetch requisites:", err))
       .finally(() => setRequisitesLoading(false));
+  }, [course]);
+
+  // Step 3: once we have the course, fetch linked instructors
+  useEffect(() => {
+    if (!course) return;
+    setInstructorsLoading(true);
+    fetch(`/api/courses/${course.id}/instructors`)
+      .then(res => (res.ok ? res.json() : []))
+      .then((data: Instructor[]) => setInstructors(Array.isArray(data) ? data : []))
+      .catch(() => setInstructors([]))
+      .finally(() => setInstructorsLoading(false));
   }, [course]);
 
   // Loading state
@@ -222,8 +251,22 @@ export function CourseDetail() {
               <div className="flex items-center gap-2">
                 <Star className="h-5 w-5 text-[#ffc845]" />
                 <div>
-                  <div className="text-2xl font-bold text-primary">—</div>
-                  <div className="text-xs text-muted-foreground">No reviews yet</div>
+                  {(() => {
+                    const rated = instructors.filter(i => i.avg_rating != null);
+                    if (rated.length === 0) return (
+                      <>
+                        <div className="text-2xl font-bold text-primary">—</div>
+                        <div className="text-xs text-muted-foreground">No reviews yet</div>
+                      </>
+                    );
+                    const avg = rated.reduce((s, i) => s + i.avg_rating!, 0) / rated.length;
+                    return (
+                      <>
+                        <div className="text-2xl font-bold text-primary">{avg.toFixed(1)}</div>
+                        <div className="text-xs text-muted-foreground">Prof Rating</div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </CardContent>
@@ -244,10 +287,24 @@ export function CourseDetail() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-primary" />
+                <BarChart3 className="h-5 w-5 text-primary" />
                 <div>
-                  <div className="text-2xl font-bold text-primary">—</div>
-                  <div className="text-xs text-muted-foreground">Difficulty</div>
+                  {(() => {
+                    const rated = instructors.filter(i => i.avg_difficulty != null);
+                    if (rated.length === 0) return (
+                      <>
+                        <div className="text-2xl font-bold text-primary">—</div>
+                        <div className="text-xs text-muted-foreground">Difficulty</div>
+                      </>
+                    );
+                    const avg = rated.reduce((s, i) => s + i.avg_difficulty!, 0) / rated.length;
+                    return (
+                      <>
+                        <div className="text-2xl font-bold text-primary">{avg.toFixed(1)}</div>
+                        <div className="text-xs text-muted-foreground">Difficulty</div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </CardContent>
@@ -382,7 +439,52 @@ export function CourseDetail() {
         </TabsContent>
 
         <TabsContent value="professors" className="space-y-4">
-          {course.professor ? (
+          {instructorsLoading ? (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground">
+                Loading instructor data...
+              </CardContent>
+            </Card>
+          ) : instructors.length > 0 ? (
+            instructors.map((inst) => (
+              <Card key={inst.instructor_id}>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-4">
+                    <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center">
+                      <Users className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1">
+                      <Link to={`/professors/${inst.instructor_id}`} className="hover:underline">
+                        <h3 className="text-lg font-semibold">{inst.name}</h3>
+                      </Link>
+                      <p className="text-sm text-muted-foreground">{inst.department || course.subject}</p>
+                      <div className="flex items-center gap-4 mt-1">
+                        {inst.avg_rating != null ? (
+                          <div className="flex items-center gap-1">
+                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                            <span className="font-medium">{inst.avg_rating.toFixed(1)}</span>
+                            <span className="text-muted-foreground text-sm">/ 5</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">No rating</span>
+                        )}
+                        {inst.avg_difficulty != null && (
+                          <span className="text-sm text-muted-foreground">
+                            Difficulty: {inst.avg_difficulty.toFixed(1)}
+                          </span>
+                        )}
+                        {inst.num_ratings != null && inst.num_ratings > 0 && (
+                          <span className="text-sm text-muted-foreground">
+                            {inst.num_ratings} reviews
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : course.professor ? (
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-4">
@@ -390,7 +492,6 @@ export function CourseDetail() {
                     <Users className="h-8 w-8 text-muted-foreground" />
                   </div>
                   <div>
-                    {/* Use the formatted string so the Professors tab matches the Overview tab */}
                     <h3 className="text-lg font-semibold">{formattedProfessors}</h3>
                     <p className="text-sm text-muted-foreground">{course.subject}</p>
                   </div>
