@@ -5,12 +5,15 @@ import "strconv"
 // Core models for Course, Professor, Review
 
 type Course struct {
-	ID           int    `json:"id"`
-	Subject      string `json:"subject"`
-	CourseNumber string `json:"course_number"`
-	CourseName   string `json:"course_name"`
-	Professor    string `json:"professor"`
-	Term         string `json:"term"`
+	ID           int      `json:"id"`
+	Subject      string   `json:"subject"`
+	CourseNumber string   `json:"course_number"`
+	CourseName   string   `json:"course_name"`
+	Professor    string   `json:"professor"`
+	Term         string   `json:"term"`
+	AvgRating    *float64 `json:"avg_rating,omitempty"`
+	AvgDifficulty *float64 `json:"avg_difficulty,omitempty"`
+	NumRatings   *int     `json:"num_ratings,omitempty"`
 }
 
 type Professor struct {

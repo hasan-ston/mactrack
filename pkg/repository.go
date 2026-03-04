@@ -281,19 +281,19 @@ func (r *Repository) SearchCourses(q, level, term string, limit, offset int) ([]
 	for _, tok := range tokens {
 		pat := "%" + tok + "%"
 		whereParts = append(whereParts,
-			"(subject LIKE ? OR course_number LIKE ? OR course_name LIKE ? OR professor LIKE ?)")
+			"(c.subject LIKE ? OR c.course_number LIKE ? OR c.course_name LIKE ? OR c.professor LIKE ?)")
 		args = append(args, pat, pat, pat, pat)
 	}
 
 	// Level filter: course_number must start with the given digit (e.g. "2" → 2000-level).
 	if level != "" && level != "all" {
-		whereParts = append(whereParts, "course_number LIKE ?")
+		whereParts = append(whereParts, "c.course_number LIKE ?")
 		args = append(args, level+"%")
 	}
 
 	// Term filter: term string must contain the given value (e.g. "Fall", "Winter").
 	if term != "" && term != "all" {
-		whereParts = append(whereParts, "term LIKE ?")
+		whereParts = append(whereParts, "c.term LIKE ?")
 		args = append(args, "%"+term+"%")
 	}
 
@@ -304,26 +304,38 @@ func (r *Repository) SearchCourses(q, level, term string, limit, offset int) ([]
 
 	// Count total matches first (needed for pagination metadata).
 	countQuery := fmt.Sprintf(
-		"SELECT COUNT(*) FROM courses %s", where)
+		"SELECT COUNT(*) FROM courses c %s", where)
 	var total int
 	if err := r.DB.QueryRow(countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count courses: %w", err)
 	}
 
-	// Fetch the requested page.
+	// Fetch the requested page with aggregated instructor stats.
 	var pageQuery string
 	var pageArgs []interface{}
 	pageArgs = append(pageArgs, args...)
 	if limit > 0 {
 		pageQuery = fmt.Sprintf(
-			"SELECT id, subject, course_number, course_name, professor, term FROM courses %s ORDER BY subject, course_number LIMIT ? OFFSET ?",
+			`SELECT c.id, c.subject, c.course_number, c.course_name, c.professor, c.term,
+			        AVG(i.ext_avg_rating), AVG(i.ext_avg_difficulty), SUM(i.ext_num_ratings)
+			 FROM courses c
+			 LEFT JOIN course_instructors ci ON c.id = ci.course_row_id
+			 LEFT JOIN instructors i ON ci.instructor_id = i.instructor_id AND i.ext_avg_rating IS NOT NULL
+			 %s
+			 GROUP BY c.id
+			 ORDER BY c.subject, c.course_number LIMIT ? OFFSET ?`,
 			where)
 		pageArgs = append(pageArgs, limit, offset)
 	} else {
-		// LIMIT -1 is the SQLite sentinel for "no limit".
-		// We still pass OFFSET so callers can page with limit=0 + offset>0.
 		pageQuery = fmt.Sprintf(
-			"SELECT id, subject, course_number, course_name, professor, term FROM courses %s ORDER BY subject, course_number LIMIT -1 OFFSET ?",
+			`SELECT c.id, c.subject, c.course_number, c.course_name, c.professor, c.term,
+			        AVG(i.ext_avg_rating), AVG(i.ext_avg_difficulty), SUM(i.ext_num_ratings)
+			 FROM courses c
+			 LEFT JOIN course_instructors ci ON c.id = ci.course_row_id
+			 LEFT JOIN instructors i ON ci.instructor_id = i.instructor_id AND i.ext_avg_rating IS NOT NULL
+			 %s
+			 GROUP BY c.id
+			 ORDER BY c.subject, c.course_number LIMIT -1 OFFSET ?`,
 			where)
 		pageArgs = append(pageArgs, offset)
 	}
@@ -338,11 +350,26 @@ func (r *Repository) SearchCourses(q, level, term string, limit, offset int) ([]
 	for rows.Next() {
 		var c Course
 		var courseName, professor sql.NullString
-		if err := rows.Scan(&c.ID, &c.Subject, &c.CourseNumber, &courseName, &professor, &c.Term); err != nil {
+		var avgRating, avgDifficulty sql.NullFloat64
+		var numRatings sql.NullInt64
+		if err := rows.Scan(&c.ID, &c.Subject, &c.CourseNumber, &courseName, &professor, &c.Term,
+			&avgRating, &avgDifficulty, &numRatings); err != nil {
 			return nil, 0, err
 		}
 		c.CourseName = courseName.String
 		c.Professor = professor.String
+		if avgRating.Valid {
+			v := avgRating.Float64
+			c.AvgRating = &v
+		}
+		if avgDifficulty.Valid {
+			v := avgDifficulty.Float64
+			c.AvgDifficulty = &v
+		}
+		if numRatings.Valid {
+			v := int(numRatings.Int64)
+			c.NumRatings = &v
+		}
 		out = append(out, c)
 	}
 	return out, total, rows.Err()
