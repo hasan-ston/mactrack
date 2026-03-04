@@ -175,7 +175,7 @@ export function CourseDetail() {
   const formattedProfessors = formatProfessors(course.professor);
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto px-4 py-8">
+    <div className="space-y-6 max-w-6xl mx-auto">
       {/* Back Button */}
       <Button asChild variant="ghost" size="sm">
         <Link to="/courses">

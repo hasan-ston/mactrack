@@ -1,13 +1,12 @@
 import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "react-router";
-import { Search, Filter, SlidersHorizontal, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { motion } from "motion/react";
+import { Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Slider } from "../components/ui/slider";
 import { Label } from "../components/ui/label";
-import { Badge } from "../components/ui/badge";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "../components/ui/sheet";
 import { courses as mockCourses, Course as MockCourse } from "../data/mockData";
 import { CourseCard } from "../components/CourseCard";
 import { unitsFromCourseNumber } from "../lib/courseUtils";
@@ -109,7 +108,6 @@ export function CourseBrowser() {
           code: `${c.subject} ${c.course_number}`,
           title: c.course_name || "",
           faculty: c.subject || "",
-          subject: c.subject || "",
           credits: unitsFromCourseNumber(c.course_number),
           description: c.course_name || "",
           prerequisites: [],
@@ -156,56 +154,32 @@ export function CourseBrowser() {
     });
   }, [courses, sortBy, minRating]);
 
-  const [filtersOpen, setFiltersOpen] = useState(false);
-
-  const hasFilters = searchQuery || selectedLevel !== "all" || selectedTerm !== "all" || minRating[0] > 0;
-
-  const clearFilters = () => {
-    setSearchQuery("");
-    setSelectedLevel("all");
-    setSelectedTerm("all");
-    setMinRating([0]);
-    setCurrentPage(1);
-  };
-
   return (
-    <div className="container mx-auto px-4 py-10 space-y-8">
+    <div className="space-y-6">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-      >
-        <h1 className="text-3xl md:text-4xl font-bold text-foreground">Browse Courses</h1>
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Browse Courses</h1>
         <p className="text-muted-foreground mt-1">
-          Explore <span className="font-semibold text-foreground">{totalCourses}</span> courses available at McMaster University
+          Explore {totalCourses} courses available at McMaster University
         </p>
-      </motion.div>
+      </div>
 
-      {/* Search + sort row */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      {/* Search and Filters */}
+      <div className="flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="text"
-            placeholder="Search by code, title, or description…"
+            placeholder="Search by course code, title, or description..."
             className="pl-10"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
         </div>
 
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2">
           <Select value={sortBy} onValueChange={setSortBy}>
-            <SelectTrigger className="w-[170px]">
+            <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
             <SelectContent>
@@ -216,179 +190,200 @@ export function CourseBrowser() {
             </SelectContent>
           </Select>
 
-          <Button
-            variant={filtersOpen ? "default" : "outline"}
-            size="icon"
-            onClick={() => setFiltersOpen((v) => !v)}
-            aria-label="Toggle filters"
-          >
-            <SlidersHorizontal className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Collapsible filter panel */}
-      {filtersOpen && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          exit={{ opacity: 0, height: 0 }}
-          className="flex flex-wrap gap-6 p-5 bg-muted/50 border border-border rounded-xl"
-        >
-          <div className="flex-1 min-w-[160px] space-y-2">
-            <Label className="text-sm">Course Level</Label>
-            <Select value={selectedLevel} onValueChange={handleLevelChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Levels" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Levels</SelectItem>
-                {ALL_LEVELS.map(level => (
-                  <SelectItem key={level} value={level}>{level}-Level ({level}xxx)</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex-1 min-w-[160px] space-y-2">
-            <Label className="text-sm">Term</Label>
-            <Select value={selectedTerm} onValueChange={handleTermChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Terms" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Terms</SelectItem>
-                <SelectItem value="Fall">Fall</SelectItem>
-                <SelectItem value="Winter">Winter</SelectItem>
-                <SelectItem value="Spring/Summer">Spring/Summer</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex-1 min-w-[160px] space-y-2">
-            <Label className="text-sm">Minimum Rating: {minRating[0].toFixed(1)}</Label>
-            <Slider
-              value={minRating}
-              onValueChange={setMinRating}
-              min={0}
-              max={5}
-              step={0.5}
-              className="mt-2"
-            />
-          </div>
-
-          {hasFilters && (
-            <div className="flex items-end">
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
-                <X className="h-3.5 w-3.5 mr-1.5" />
-                Clear Filters
+          {/* Mobile Filters */}
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="outline" size="icon" className="md:hidden">
+                <SlidersHorizontal className="h-4 w-4" />
               </Button>
-            </div>
-          )}
-        </motion.div>
-      )}
+            </SheetTrigger>
+            <SheetContent>
+              <SheetHeader>
+                <SheetTitle>Filters</SheetTitle>
+                <SheetDescription>Refine your course search</SheetDescription>
+              </SheetHeader>
+              <div className="space-y-6 mt-6">
+                <div className="space-y-2">
+                  <Label>Level</Label>
+                  <Select value={selectedLevel} onValueChange={handleLevelChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Levels" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Levels</SelectItem>
+                      {ALL_LEVELS.map(level => (
+                        <SelectItem key={level} value={level}>{level}-level</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-      {/* Active filter chips */}
-      {hasFilters && (
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-sm text-muted-foreground">Active filters:</span>
-          {searchQuery && (
-            <Badge variant="secondary" className="gap-1.5 cursor-pointer" onClick={() => setSearchQuery("")}>
-              Search: "{searchQuery}" <X className="h-3 w-3" />
-            </Badge>
-          )}
-          {selectedLevel !== "all" && (
-            <Badge variant="secondary" className="gap-1.5 cursor-pointer" onClick={() => handleLevelChange("all")}>
-              Level: {selectedLevel}-Level <X className="h-3 w-3" />
-            </Badge>
-          )}
-          {selectedTerm !== "all" && (
-            <Badge variant="secondary" className="gap-1.5 cursor-pointer" onClick={() => handleTermChange("all")}>
-              Term: {selectedTerm} <X className="h-3 w-3" />
-            </Badge>
-          )}
-          {minRating[0] > 0 && (
-            <Badge variant="secondary" className="gap-1.5 cursor-pointer" onClick={() => setMinRating([0])}>
-              Min Rating: {minRating[0].toFixed(1)} <X className="h-3 w-3" />
-            </Badge>
-          )}
+                <div className="space-y-2">
+                  <Label>Term</Label>
+                  <Select value={selectedTerm} onValueChange={handleTermChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Terms" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Terms</SelectItem>
+                      <SelectItem value="Fall">Fall</SelectItem>
+                      <SelectItem value="Winter">Winter</SelectItem>
+                      <SelectItem value="Spring/Summer">Spring/Summer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Minimum Rating: {minRating[0].toFixed(1)}</Label>
+                  <Slider
+                    value={minRating}
+                    onValueChange={setMinRating}
+                    min={0}
+                    max={5}
+                    step={0.5}
+                    className="mt-2"
+                  />
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
-      )}
-
-      {/* Results count */}
-      <div className="text-sm text-muted-foreground">
-        Showing <span className="font-semibold text-foreground">{filteredCourses.length}</span> of{" "}
-        <span className="font-semibold text-foreground">{totalCourses}</span> courses
-        {totalPages > 1 && ` · page ${currentPage} of ${totalPages}`}
       </div>
 
-      {/* Course grid */}
-      {filteredCourses.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-center py-20"
-        >
-          <Filter className="h-14 w-14 text-muted-foreground/40 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold mb-2">No courses found</h3>
-          <p className="text-muted-foreground mb-6">Try adjusting your filters or search query</p>
-          <Button variant="outline" onClick={clearFilters}>Clear All Filters</Button>
-        </motion.div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredCourses.map((course, i) => (
-            <motion.div
-              key={course.id}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, delay: Math.min(i * 0.05, 0.4) }}
+      {/* Desktop Filters */}
+      <div className="hidden md:flex gap-4 p-4 bg-muted/50 rounded-lg">
+        <div className="flex-1">
+          <Label className="text-sm mb-2 block">Level</Label>
+          <Select value={selectedLevel} onValueChange={handleLevelChange}>
+            <SelectTrigger>
+              <SelectValue placeholder="All Levels" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Levels</SelectItem>
+              {ALL_LEVELS.map(level => (
+                <SelectItem key={level} value={level}>{level}-level</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex-1">
+          <Label className="text-sm mb-2 block">Term</Label>
+          <Select value={selectedTerm} onValueChange={handleTermChange}>
+            <SelectTrigger>
+              <SelectValue placeholder="All Terms" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Terms</SelectItem>
+              <SelectItem value="Fall">Fall</SelectItem>
+              <SelectItem value="Winter">Winter</SelectItem>
+              <SelectItem value="Spring/Summer">Spring/Summer</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex-1">
+          <Label className="text-sm mb-2 block">
+            Minimum Rating: {minRating[0].toFixed(1)}
+          </Label>
+          <Slider
+            value={minRating}
+            onValueChange={setMinRating}
+            min={0}
+            max={5}
+            step={0.5}
+            className="mt-3"
+          />
+        </div>
+      </div>
+
+      {/* Results count + clear filters */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            {minRating[0] > 0 && filteredCourses.length < courses.length
+              // min-rating client filter narrowed the page — note both counts
+              ? `${filteredCourses.length} of ${totalCourses} total · page ${currentPage} of ${totalPages}`
+              // Server handles all other filters — show a clean summary
+              : `${totalCourses} total${totalPages > 1 ? ` · page ${currentPage} of ${totalPages}` : ""}`
+            }
+          </p>
+          {(searchQuery || selectedLevel !== "all" || selectedTerm !== "all" || minRating[0] > 0) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchQuery("");
+                setSelectedLevel("all");
+                setSelectedTerm("all");
+                setMinRating([0]);
+                setCurrentPage(1);
+              }}
             >
-              <CourseCard course={course} />
-            </motion.div>
-          ))}
-        </div>
-      )}
-
-      {/* Pagination controls */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-          >
-            <ChevronLeft className="h-4 w-4 mr-1" />
-            Previous
-          </Button>
-
-          {paginationRange(currentPage, totalPages).map((p, i) =>
-            p === "…" ? (
-              <span key={`ellipsis-${i}`} className="px-2 text-muted-foreground">…</span>
-            ) : (
-              <Button
-                key={p}
-                variant={currentPage === p ? "default" : "outline"}
-                size="sm"
-                className="w-9"
-                onClick={() => setCurrentPage(p as number)}
-              >
-                {p}
-              </Button>
-            )
+              Clear Filters
+            </Button>
           )}
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-          >
-            Next
-            <ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
         </div>
-      )}
+
+        {filteredCourses.length === 0 ? (
+          <div className="text-center py-12">
+            <Filter className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No courses found</h3>
+            <p className="text-muted-foreground">
+              Try adjusting your filters or search query
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredCourses.map(course => (
+              <CourseCard key={course.id} course={course} />
+            ))}
+          </div>
+        )}
+
+        {/* Pagination controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Previous
+            </Button>
+
+            {/* Page number chips — show first, last, and a ±2 window around
+                 currentPage. May insert "…" gap markers for non-contiguous ranges. */}
+            {paginationRange(currentPage, totalPages).map((p, i) =>
+              p === "…" ? (
+                <span key={`ellipsis-${i}`} className="px-2 text-muted-foreground">…</span>
+              ) : (
+                <Button
+                  key={p}
+                  variant={currentPage === p ? "default" : "outline"}
+                  size="sm"
+                  className="w-9"
+                  onClick={() => setCurrentPage(p as number)}
+                >
+                  {p}
+                </Button>
+              )
+            )}
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

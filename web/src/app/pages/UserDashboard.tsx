@@ -470,7 +470,7 @@ export function UserDashboard() {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto px-4 py-8">
+    <div className="space-y-6 max-w-6xl mx-auto">
 
       {/* Grade prompt dialog — shown when user picks "Completed" */}
       <GradePromptDialog

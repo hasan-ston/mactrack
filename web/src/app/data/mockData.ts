@@ -5,7 +5,6 @@ export interface Course {
   code: string;
   title: string;
   faculty: string;
-  subject: string;
   credits: number;
   description: string;
   prerequisites?: string[];
@@ -17,18 +16,6 @@ export interface Course {
   professors: string[];
   classAverage: number;
 }
-
-export const subjectColors: Record<string, { bg: string; text: string; darkBg: string }> = {
-  COMPSCI: { bg: "bg-blue-100", text: "text-blue-700", darkBg: "dark:bg-blue-950 dark:text-blue-300" },
-  SFWRENG: { bg: "bg-indigo-100", text: "text-indigo-700", darkBg: "dark:bg-indigo-950 dark:text-indigo-300" },
-  MATH: { bg: "bg-emerald-100", text: "text-emerald-700", darkBg: "dark:bg-emerald-950 dark:text-emerald-300" },
-  STATS: { bg: "bg-teal-100", text: "text-teal-700", darkBg: "dark:bg-teal-950 dark:text-teal-300" },
-  ENGINEER: { bg: "bg-orange-100", text: "text-orange-700", darkBg: "dark:bg-orange-950 dark:text-orange-300" },
-  BIOLOGY: { bg: "bg-green-100", text: "text-green-700", darkBg: "dark:bg-green-950 dark:text-green-300" },
-  PHYSICS: { bg: "bg-violet-100", text: "text-violet-700", darkBg: "dark:bg-violet-950 dark:text-violet-300" },
-  CHEM: { bg: "bg-red-100", text: "text-red-700", darkBg: "dark:bg-red-950 dark:text-red-300" },
-  ECON: { bg: "bg-amber-100", text: "text-amber-700", darkBg: "dark:bg-amber-950 dark:text-amber-300" },
-};
 
 export interface Professor {
   id: string;
@@ -73,7 +60,6 @@ export const courses: Course[] = [
     code: "COMPSCI 1MD3",
     title: "Introduction to Programming",
     faculty: "Faculty of Engineering",
-    subject: "COMPSCI",
     credits: 3,
     description: "This course introduces students to problem solving and programming using an object-oriented language. Topics include basic data types and control structures, functions, arrays, file I/O, objects, and classes.",
     prerequisites: [],
@@ -89,7 +75,6 @@ export const courses: Course[] = [
     code: "COMPSCI 2C03",
     title: "Data Structures and Algorithms",
     faculty: "Faculty of Engineering",
-    subject: "COMPSCI",
     credits: 3,
     description: "This course covers basic data structures and their implementations including arrays, stacks, queues, linked lists, binary trees, and graphs. Analysis of algorithms, searching and sorting algorithms, and introduction to algorithm design techniques.",
     prerequisites: ["COMPSCI 1MD3"],
@@ -105,7 +90,6 @@ export const courses: Course[] = [
     code: "COMPSCI 2DB3",
     title: "Databases",
     faculty: "Faculty of Engineering",
-    subject: "COMPSCI",
     credits: 3,
     description: "Introduction to database systems and database management. Topics include data models, database design, relational algebra, SQL, normalization, and transaction management.",
     prerequisites: ["COMPSCI 1MD3"],
@@ -121,7 +105,6 @@ export const courses: Course[] = [
     code: "COMPSCI 3AC3",
     title: "Algorithms and Complexity",
     faculty: "Faculty of Engineering",
-    subject: "COMPSCI",
     credits: 3,
     description: "Advanced study of algorithm design and analysis techniques. Topics include divide and conquer, dynamic programming, greedy algorithms, graph algorithms, and NP-completeness.",
     prerequisites: ["COMPSCI 2C03"],
@@ -137,7 +120,6 @@ export const courses: Course[] = [
     code: "MATH 1B03",
     title: "Linear Algebra I",
     faculty: "Faculty of Science",
-    subject: "MATH",
     credits: 3,
     description: "Systems of linear equations, matrix algebra, determinants, vector geometry, introduction to vector spaces, eigenvalues and eigenvectors, and applications.",
     prerequisites: [],
@@ -153,7 +135,6 @@ export const courses: Course[] = [
     code: "MATH 1ZC3",
     title: "Engineering Mathematics I",
     faculty: "Faculty of Science",
-    subject: "MATH",
     credits: 3,
     description: "Review of high school mathematics, limits and continuity, derivatives, curve sketching, optimization, antiderivatives, definite integrals, and applications.",
     prerequisites: [],
@@ -169,7 +150,6 @@ export const courses: Course[] = [
     code: "STATS 2D03",
     title: "Introduction to Probability",
     faculty: "Faculty of Science",
-    subject: "STATS",
     credits: 3,
     description: "Sample spaces, probability axioms, conditional probability, independence, random variables, expectation, variance, moment generating functions, and limit theorems.",
     prerequisites: ["MATH 1ZC3"],
@@ -185,7 +165,6 @@ export const courses: Course[] = [
     code: "ENGINEER 1D04",
     title: "Introduction to Engineering Practice",
     faculty: "Faculty of Engineering",
-    subject: "ENGINEER",
     credits: 4,
     description: "Introduction to engineering design, teamwork, communication, and professional practice. Students work in teams on design projects.",
     prerequisites: [],
@@ -201,7 +180,6 @@ export const courses: Course[] = [
     code: "COMPSCI 3SD3",
     title: "Concurrent Systems",
     faculty: "Faculty of Engineering",
-    subject: "COMPSCI",
     credits: 3,
     description: "Introduction to concurrent programming and systems. Topics include processes and threads, synchronization, deadlock, concurrent data structures, and parallel algorithms.",
     prerequisites: ["COMPSCI 2C03"],
@@ -217,7 +195,6 @@ export const courses: Course[] = [
     code: "COMPSCI 4TB3",
     title: "Syntax-Based Tools and Compilers",
     faculty: "Faculty of Engineering",
-    subject: "COMPSCI",
     credits: 3,
     description: "Formal languages, grammars, parsing techniques, lexical analysis, semantic analysis, code generation, and optimization.",
     prerequisites: ["COMPSCI 2C03"],
@@ -354,6 +331,3 @@ export function getReviewsByCourseId(courseId: string): Review[] {
 export function getReviewsByProfessorId(professorId: string): Review[] {
   return reviews.filter(review => review.professorId === professorId);
 }
-
-export const featuredCourses = courses.slice(0, 3);
-export const trendingCourses = courses.slice(3, 6);
