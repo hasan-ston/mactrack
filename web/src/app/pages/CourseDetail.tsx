@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router";
-import { ArrowLeft, Users, Star, TrendingUp, Clock, CheckCircle2, BarChart3 } from "lucide-react";
+import { ArrowLeft, BarChart3, BookOpen, Users, Star, TrendingUp, Clock, CheckCircle2 } from "lucide-react";
 import { AddToPlannerDialog } from "../components/AddToPlannerDialog";
 import { unitsFromCourseNumber } from "../lib/courseUtils";
 import { Button } from "../components/ui/button";
@@ -9,8 +9,6 @@ import { Badge } from "../components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Separator } from "../components/ui/separator";
 import { Progress } from "../components/ui/progress";
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
 
 // Shape returned by GET /api/courses/:id
 interface ApiCourse {
@@ -35,14 +33,18 @@ interface RequisitesResponse {
   ANTIREQ: RequisiteRow[];
 }
 
+// Shape returned by GET /api/courses/:id/instructors
 interface Instructor {
   instructor_id: number;
   name: string;
   department: string;
+  external_source: string;
+  external_id: string;
+  external_url: string;
   avg_rating: number | null;
   avg_difficulty: number | null;
   num_ratings: number | null;
-  external_url: string;
+  last_scraped: string;
 }
 
 // Cleans up the professor field from the courses table.
@@ -75,28 +77,9 @@ export function CourseDetail() {
 
   const [isAdded, setIsAdded] = useState(false);
 
-  // Instructor RMP data
+  // Instructors linked to this course (from RMP data)
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [instructorsLoading, setInstructorsLoading] = useState(false);
-
-  // Step 3: fetch instructor RMP data for this course
-  useEffect(() => {
-    if (!course) return;
-
-    setInstructorsLoading(true);
-
-    // Use the dedicated backend endpoint that queries course_instructors
-    fetch(`${API_BASE}/api/courses/${course.id}/instructors`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        return res.json();
-      })
-      .then((data: Instructor[]) => {
-        setInstructors(data || []);
-      })
-      .catch((err) => console.error("Failed to fetch instructors:", err))
-      .finally(() => setInstructorsLoading(false));
-  }, [course]);
 
   // Step 1: fetch the course by its numeric DB id
   useEffect(() => {
@@ -142,6 +125,17 @@ export function CourseDetail() {
       .then((data: RequisitesResponse) => setRequisites(data))
       .catch(err => console.error("Failed to fetch requisites:", err))
       .finally(() => setRequisitesLoading(false));
+  }, [course]);
+
+  // Step 3: once we have the course, fetch linked instructors
+  useEffect(() => {
+    if (!course) return;
+    setInstructorsLoading(true);
+    fetch(`/api/courses/${course.id}/instructors`)
+      .then(res => (res.ok ? res.json() : []))
+      .then((data: Instructor[]) => setInstructors(Array.isArray(data) ? data : []))
+      .catch(() => setInstructors([]))
+      .finally(() => setInstructorsLoading(false));
   }, [course]);
 
   // Loading state
@@ -210,7 +204,7 @@ export function CourseDetail() {
   const formattedProfessors = formatProfessors(course.professor);
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-6xl mx-auto px-4 py-8">
       {/* Back Button */}
       <Button asChild variant="ghost" size="sm">
         <Link to="/courses">
@@ -250,23 +244,29 @@ export function CourseDetail() {
           </div>
         </div>
 
-        {/* Quick Stats — shows RMP data from linked instructors when available */}
+        {/* Quick Stats — placeholders for data not yet in DB */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2">
                 <Star className="h-5 w-5 text-[#ffc845]" />
                 <div>
-                  <div className="text-2xl font-bold text-primary">
-                    {instructors.length > 0 && instructors.some(i => i.avg_rating != null)
-                      ? (instructors.reduce((sum, i) => sum + (i.avg_rating ?? 0), 0) / instructors.filter(i => i.avg_rating != null).length).toFixed(1)
-                      : "—"}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {instructors.length > 0 && instructors.some(i => i.avg_rating != null)
-                      ? "Prof Rating"
-                      : "No reviews yet"}
-                  </div>
+                  {(() => {
+                    const rated = instructors.filter(i => i.avg_rating != null);
+                    if (rated.length === 0) return (
+                      <>
+                        <div className="text-2xl font-bold text-primary">—</div>
+                        <div className="text-xs text-muted-foreground">No reviews yet</div>
+                      </>
+                    );
+                    const avg = rated.reduce((s, i) => s + i.avg_rating!, 0) / rated.length;
+                    return (
+                      <>
+                        <div className="text-2xl font-bold text-primary">{avg.toFixed(1)}</div>
+                        <div className="text-xs text-muted-foreground">Prof Rating</div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </CardContent>
@@ -289,16 +289,22 @@ export function CourseDetail() {
               <div className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5 text-primary" />
                 <div>
-                  <div className="text-2xl font-bold text-primary">
-                    {instructors.length > 0 && instructors.some(i => i.avg_difficulty != null)
-                      ? (instructors.reduce((sum, i) => sum + (i.avg_difficulty ?? 0), 0) / instructors.filter(i => i.avg_difficulty != null).length).toFixed(1)
-                      : "—"}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {instructors.length > 0 && instructors.some(i => i.avg_difficulty != null)
-                      ? "Difficulty"
-                      : "Difficulty"}
-                  </div>
+                  {(() => {
+                    const rated = instructors.filter(i => i.avg_difficulty != null);
+                    if (rated.length === 0) return (
+                      <>
+                        <div className="text-2xl font-bold text-primary">—</div>
+                        <div className="text-xs text-muted-foreground">Difficulty</div>
+                      </>
+                    );
+                    const avg = rated.reduce((s, i) => s + i.avg_difficulty!, 0) / rated.length;
+                    return (
+                      <>
+                        <div className="text-2xl font-bold text-primary">{avg.toFixed(1)}</div>
+                        <div className="text-xs text-muted-foreground">Difficulty</div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </CardContent>
@@ -436,73 +442,48 @@ export function CourseDetail() {
           {instructorsLoading ? (
             <Card>
               <CardContent className="pt-6 text-center text-muted-foreground">
-                Loading professor information...
+                Loading instructor data...
               </CardContent>
             </Card>
           ) : instructors.length > 0 ? (
-            <div className="space-y-4">
-              {instructors.map((instructor) => (
-                <Card key={instructor.instructor_id}>
-                  <CardContent className="pt-6">
-                    <div className="flex items-start gap-4">
-                      <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center shrink-0">
-                        <Users className="h-8 w-8 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-lg font-semibold">{instructor.name}</h3>
-                          <Link to={`/professors/${instructor.instructor_id}`}>
-                            <Badge variant="outline" className="cursor-pointer hover:bg-muted">
-                              View Profile
-                            </Badge>
-                          </Link>
-                        </div>
-                        {instructor.department && (
-                          <p className="text-sm text-muted-foreground">{instructor.department}</p>
+            instructors.map((inst) => (
+              <Card key={inst.instructor_id}>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-4">
+                    <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center">
+                      <Users className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1">
+                      <Link to={`/professors/${inst.instructor_id}`} className="hover:underline">
+                        <h3 className="text-lg font-semibold">{inst.name}</h3>
+                      </Link>
+                      <p className="text-sm text-muted-foreground">{inst.department || course.subject}</p>
+                      <div className="flex items-center gap-4 mt-1">
+                        {inst.avg_rating != null ? (
+                          <div className="flex items-center gap-1">
+                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                            <span className="font-medium">{inst.avg_rating.toFixed(1)}</span>
+                            <span className="text-muted-foreground text-sm">/ 5</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">No rating</span>
                         )}
-                        
-                        {/* RMP Ratings */}
-                        <div className="mt-3 flex items-center gap-6">
-                          {instructor.avg_rating != null ? (
-                            <div className="flex items-center gap-1">
-                              <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
-                              <span className="font-semibold">{instructor.avg_rating.toFixed(1)}</span>
-                              <span className="text-muted-foreground">/ 5.0</span>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">No rating</span>
-                          )}
-                          {instructor.num_ratings != null && (
-                            <span className="text-sm text-muted-foreground">
-                              {instructor.num_ratings} reviews
-                            </span>
-                          )}
-                          {instructor.avg_difficulty != null && (
-                            <div className="flex items-center gap-1">
-                              <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm text-muted-foreground">
-                                {instructor.avg_difficulty.toFixed(1)} difficulty
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        
-                        {instructor.external_url && (
-                          <a
-                            href={instructor.external_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm text-blue-600 hover:underline mt-2 inline-block"
-                          >
-                            View on RateMyProfessors →
-                          </a>
+                        {inst.avg_difficulty != null && (
+                          <span className="text-sm text-muted-foreground">
+                            Difficulty: {inst.avg_difficulty.toFixed(1)}
+                          </span>
+                        )}
+                        {inst.num_ratings != null && inst.num_ratings > 0 && (
+                          <span className="text-sm text-muted-foreground">
+                            {inst.num_ratings} reviews
+                          </span>
                         )}
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
           ) : course.professor ? (
             <Card>
               <CardContent className="pt-6">
@@ -511,14 +492,10 @@ export function CourseDetail() {
                     <Users className="h-8 w-8 text-muted-foreground" />
                   </div>
                   <div>
-                    {/* Use the formatted string so the Professors tab matches the Overview tab */}
                     <h3 className="text-lg font-semibold">{formattedProfessors}</h3>
                     <p className="text-sm text-muted-foreground">{course.subject}</p>
                   </div>
                 </div>
-                <p className="mt-4 text-sm text-muted-foreground">
-                  No RMP ratings available for this professor.
-                </p>
               </CardContent>
             </Card>
           ) : (

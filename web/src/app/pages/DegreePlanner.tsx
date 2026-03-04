@@ -11,6 +11,7 @@ import { Label } from "../components/ui/label";
 import { useAuth } from "../contexts/AuthContext";
 import { authFetch } from "../lib/api";
 import { unitsFromCourseNumber } from "../lib/courseUtils";
+import { getSubjectColor } from "../data/mockData";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,6 +60,35 @@ function planItemKey(item: APIPlanItem): string {
   return `${item.subject}-${item.course_number}-${item.year_index}-${item.season}`;
 }
 
+/** Status badge color mapping */
+function statusStyle(status: APIPlanItem["status"]) {
+  switch (status) {
+    case "COMPLETED":
+      return "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800";
+    case "IN_PROGRESS":
+      return "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800";
+    case "DROPPED":
+      return "bg-red-100 text-red-700 border-red-200 dark:bg-red-950/60 dark:text-red-300 dark:border-red-800";
+    default: // PLANNED
+      return "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800";
+  }
+}
+
+function levelFromCourseNumber(courseNumber: string): number | null {
+  const first = courseNumber.trim()[0];
+  const n = parseInt(first, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+function seasonFromOfferingTerm(term: string): "Fall" | "Winter" | "Spring" | "Summer" | null {
+  const t = term.toLowerCase();
+  if (t.includes("fall")) return "Fall";
+  if (t.includes("winter")) return "Winter";
+  if (t.includes("spring")) return "Spring";
+  if (t.includes("summer")) return "Summer";
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -79,6 +109,15 @@ export function DegreePlanner() {
   const [planLoading, setPlanLoading] = useState(true);
   const [planError, setPlanError] = useState<string | null>(null);
   const [mutating, setMutating] = useState(false);
+
+  const [filterSubject, setFilterSubject] = useState<string>("ALL");
+  const [filterLevel, setFilterLevel] = useState<string>("ALL");
+  const [filterTerm, setFilterTerm] = useState<string>("ALL");
+
+  const subjectOptions = Array.from(new Set(searchResults.map(c => c.subject))).sort((a, b) => a.localeCompare(b));
+
+  const levelOptions = ["1", "2", "3", "4"] as const;
+  const termOptions = ["Fall", "Winter", "Spring", "Summer"] as const;
 
   // Fetch plan on mount
   useEffect(() => {
@@ -122,6 +161,14 @@ export function DegreePlanner() {
   useEffect(() => {
     if (dialogOpen) searchCourses("");
   }, [dialogOpen, searchCourses]);
+
+  useEffect(() => {
+    if (!dialogOpen) {
+      setFilterSubject("ALL");
+      setFilterLevel("ALL");
+      setFilterTerm("ALL");
+    }
+  }, [dialogOpen]);
 
   // Add course to plan
   const handleAddCourse = async () => {
@@ -188,6 +235,22 @@ export function DegreePlanner() {
     return planItems.filter(pi => pi.year_index === yearIndex && pi.season === season);
   };
 
+  const filteredResults = searchResults.filter(c => {
+    if (filterSubject !== "ALL" && c.subject !== filterSubject) return false;
+
+    if (filterLevel !== "ALL") {
+      const lvl = levelFromCourseNumber(c.course_number);
+      if (!lvl || lvl.toString() !== filterLevel) return false;
+    }
+
+    if (filterTerm !== "ALL") {
+      const s = seasonFromOfferingTerm(c.term);
+      if (s !== filterTerm) return false;
+    }
+
+    return true;
+  });
+
   if (planLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -205,12 +268,12 @@ export function DegreePlanner() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto px-4 py-8">
 
       {/* Header + Add Course */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Degree Planner</h1>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">Degree Planner</h1>
           <p className="text-muted-foreground mt-1">
             Plan your academic journey and track your progress
           </p>
@@ -218,8 +281,8 @@ export function DegreePlanner() {
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
+            <Button className="gap-2 rounded-xl shadow-md">
+              <Plus className="h-4 w-4" />
               Add Course
             </Button>
           </DialogTrigger>
@@ -241,34 +304,88 @@ export function DegreePlanner() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="space-y-2">
+                  <Label>Subject</Label>
+                  <Select value={filterSubject} onValueChange={setFilterSubject}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All subjects" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All subjects</SelectItem>
+                      {subjectOptions.map(subject => (
+                        <SelectItem key={subject} value={subject}>
+                          {subject}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Level</Label>
+                  <Select value={filterLevel} onValueChange={setFilterLevel}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All levels" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All levels</SelectItem>
+                      {levelOptions.map(level => (
+                        <SelectItem key={level} value={level}>
+                          Level {level}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Term</Label>
+                  <Select value={filterTerm} onValueChange={setFilterTerm}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All terms" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All terms</SelectItem>
+                      {termOptions.map(season => (
+                        <SelectItem key={season} value={season}>
+                          {season}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
               <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg">
                 {searchLoading ? (
                   <div className="flex justify-center py-8">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                   </div>
-                ) : searchResults.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8 text-sm">
-                    {searchQuery
-                      ? "No courses found — try a shorter search (e.g. \"COMPSCI 2\" or \"software\")"
-                      : "Start typing to search courses"}
+                ) : filteredResults.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">
+                    {searchQuery ? "No courses found" : (filterSubject !== "ALL" || filterLevel !== "ALL" || filterTerm !== "ALL") ? "No courses match your filters" : "Start typing to search courses"}
                   </p>
                 ) : (
-                  searchResults.map(course => (
+                  filteredResults.map(course => {
+                    const sc = getSubjectColor(course.subject);
+                    return (
                     <button
                       key={`${course.subject}-${course.course_number}-${course.term}`}
                       onClick={() => setSelectedCourse(course)}
                       className={`w-full text-left p-3 border-b last:border-b-0 hover:bg-muted/50 transition-colors ${
-                        selectedCourse?.id === course.id ? "bg-muted" : ""
+                        selectedCourse?.id === course.id ? "bg-primary/10 dark:bg-primary/20 border-primary/20" : ""
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="font-medium">{courseCode(course)}</div>
-                          <div className="text-sm text-muted-foreground">{course.course_name}</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold border border-transparent ${sc.bg} ${sc.text} ${sc.darkBg}`}>
+                              {course.subject}
+                            </span>
+                            <span className="font-medium">{course.course_number}</span>
+                          </div>
+                          <div className="text-sm text-muted-foreground mt-0.5 truncate">{course.course_name}</div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {/* Show real unit value in search results */}
+                        <div className="flex items-center gap-2 shrink-0">
                           <Badge variant="outline" className="text-xs">
                             {unitsFromCourseNumber(course.course_number)} units
                           </Badge>
@@ -276,7 +393,8 @@ export function DegreePlanner() {
                         </div>
                       </div>
                     </button>
-                  ))
+                  );
+                  })
                 )}
               </div>
 
@@ -328,10 +446,12 @@ export function DegreePlanner() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
+        <Card className="border-emerald-200 dark:border-emerald-800/40 bg-gradient-to-br from-emerald-50/60 to-card dark:from-emerald-950/20 dark:to-card">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <GraduationCap className="h-5 w-5 text-green-500" />
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
+                <GraduationCap className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
               <div>
                 <div className="text-2xl font-bold">{unitsCompleted}</div>
                 <div className="text-xs text-muted-foreground">Units Completed</div>
@@ -340,10 +460,12 @@ export function DegreePlanner() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-blue-200 dark:border-blue-800/40 bg-gradient-to-br from-blue-50/60 to-card dark:from-blue-950/20 dark:to-card">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-blue-500" />
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+                <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
               <div>
                 <div className="text-2xl font-bold">{unitsPlanned}</div>
                 <div className="text-xs text-muted-foreground">Units Planned</div>
@@ -352,10 +474,12 @@ export function DegreePlanner() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-purple-200 dark:border-purple-800/40 bg-gradient-to-br from-purple-50/60 to-card dark:from-purple-950/20 dark:to-card">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <GraduationCap className="h-5 w-5 text-purple-500" />
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center">
+                <GraduationCap className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              </div>
               <div>
                 <div className="text-2xl font-bold">{unitsRemaining}</div>
                 <div className="text-xs text-muted-foreground">Units Remaining</div>
@@ -367,11 +491,15 @@ export function DegreePlanner() {
 
       {/* Timeline */}
       <div className="space-y-8">
-        {YEARS.map(year => (
-          <Card key={year}>
-            <CardHeader>
+        {YEARS.map(year => {
+          const yearHasCourses = TERMS.some(term => getCoursesByYearAndTerm(year, term).length > 0);
+          return (
+          <Card key={year} className={yearHasCourses ? "border-primary/20 dark:border-primary/15" : ""}>
+            <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
+                <div className="h-8 w-8 rounded-lg bg-primary/10 dark:bg-primary/20 flex items-center justify-center">
+                  <Calendar className="h-4 w-4 text-primary" />
+                </div>
                 Academic Year {year}–{year + 1}
               </CardTitle>
             </CardHeader>
@@ -379,7 +507,6 @@ export function DegreePlanner() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {TERMS.map(term => {
                   const termCourses = getCoursesByYearAndTerm(year, term);
-                  // Sum real unit values for the term total
                   const termUnits = termCourses.reduce(
                     (sum, pi) => sum + unitsFromCourseNumber(pi.course_number), 0
                   );
@@ -387,25 +514,35 @@ export function DegreePlanner() {
                   return (
                     <div key={term} className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <h3 className="font-semibold">{term}</h3>
-                        <Badge variant="outline">{termUnits} units</Badge>
+                        <h3 className="font-semibold text-foreground">{term}</h3>
+                        <Badge variant="outline" className="font-medium">{termUnits} units</Badge>
                       </div>
 
-                      <div className="space-y-2 min-h-[100px] p-3 border-2 border-dashed rounded-lg bg-muted/20">
+                      <div className="space-y-2.5 min-h-[100px] p-3 border-2 border-dashed border-border/60 dark:border-border/40 rounded-xl bg-muted/30 dark:bg-muted/10">
                         {termCourses.length === 0 ? (
                           <p className="text-center text-sm text-muted-foreground py-8">
                             No courses planned
                           </p>
                         ) : (
-                          termCourses.map(item => (
+                          termCourses.map(item => {
+                            const sc = getSubjectColor(item.subject);
+                            return (
                             <div
                               key={planItemKey(item)}
-                              className="p-3 bg-background border rounded-lg space-y-2"
+                              className="p-3 bg-card border border-border/80 dark:border-border/50 rounded-xl shadow-sm space-y-2 transition-all hover:shadow-md"
                             >
-                              <div className="flex items-start justify-between">
+                              <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                                    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold border border-transparent ${sc.bg} ${sc.text} ${sc.darkBg}`}>
+                                      {item.subject}
+                                    </span>
+                                    <Badge className={`text-[10px] px-1.5 py-0 h-5 border ${statusStyle(item.status)}`}>
+                                      {item.status}
+                                    </Badge>
+                                  </div>
                                   <Link to={`/courses/${item.subject}/${item.course_number}`}>
-                                    <div className="font-medium hover:text-primary transition-colors">
+                                    <div className="font-semibold text-sm hover:text-primary transition-colors">
                                       {item.subject} {item.course_number}
                                     </div>
                                   </Link>
@@ -416,71 +553,65 @@ export function DegreePlanner() {
                                   )}
                                 </div>
 
-                                <Badge
-                                  variant={item.status === "COMPLETED" ? "default" : "secondary"}
-                                  className="text-xs mr-2"
-                                >
-                                  {item.status}
-                                </Badge>
-                                {/* Status changer — lets user mark course as completed and enter grade */}
-                                
-                                <Select
-                                  value={item.status}
-                                  onValueChange={async (newStatus) => {
-                                    await authFetch(`/api/users/${user!.userID}/plan/${item.plan_item_id}`, {
-                                      method: "PATCH",
-                                      body: JSON.stringify({ status: newStatus }),
-                                    });
-                                    const updated = await authFetch(`/api/users/${user!.userID}/plan`).then(r => r.json());
-                                    setPlanItems(updated ?? []);
-                                  }}
-                                >
-                                  <SelectTrigger className="h-6 text-xs w-32">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="PLANNED">Planned</SelectItem>
-                                    <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                                    <SelectItem value="COMPLETED">Completed</SelectItem>
-                                    <SelectItem value="DROPPED">Dropped</SelectItem>
-                                  </SelectContent>
-                                </Select>
-
-                                {/* Grade input — only shown for completed courses */}
-                                {item.status === "COMPLETED" && (
-                                  <input
-                                    type="text"
-                                    placeholder="Grade (e.g. A+)"
-                                    defaultValue={item.grade ?? ""}
-                                    className="h-6 text-xs px-2 border rounded w-20"
-                                    onBlur={async (e) => {
-                                      const grade = e.target.value.trim();
-                                      if (!grade) return;
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <Select
+                                    value={item.status}
+                                    onValueChange={async (newStatus) => {
                                       await authFetch(`/api/users/${user!.userID}/plan/${item.plan_item_id}`, {
                                         method: "PATCH",
-                                        body: JSON.stringify({ status: "COMPLETED", grade }),
+                                        body: JSON.stringify({ status: newStatus }),
                                       });
                                       const updated = await authFetch(`/api/users/${user!.userID}/plan`).then(r => r.json());
                                       setPlanItems(updated ?? []);
                                     }}
-                                  />
-                                )}
+                                  >
+                                    <SelectTrigger className="h-7 text-xs w-28 rounded-lg">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="PLANNED">Planned</SelectItem>
+                                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                                      <SelectItem value="COMPLETED">Completed</SelectItem>
+                                      <SelectItem value="DROPPED">Dropped</SelectItem>
+                                    </SelectContent>
+                                  </Select>
 
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6 flex-shrink-0"
-                                  onClick={() => handleRemoveCourse(item)}
-                                  disabled={mutating}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
+                                  {item.status === "COMPLETED" && (
+                                    <input
+                                      type="text"
+                                      placeholder="Grade"
+                                      defaultValue={item.grade ?? ""}
+                                      className="h-7 text-xs px-2 border border-border/80 dark:border-border/50 rounded-lg w-16 bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                      onBlur={async (e) => {
+                                        const grade = e.target.value.trim();
+                                        if (!grade) return;
+                                        await authFetch(`/api/users/${user!.userID}/plan/${item.plan_item_id}`, {
+                                          method: "PATCH",
+                                          body: JSON.stringify({ status: "COMPLETED", grade }),
+                                        });
+                                        const updated = await authFetch(`/api/users/${user!.userID}/plan`).then(r => r.json());
+                                        setPlanItems(updated ?? []);
+                                      }}
+                                    />
+                                  )}
+
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-destructive"
+                                    onClick={() => handleRemoveCourse(item)}
+                                    disabled={mutating}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
                               </div>
 
-                              {/* Show real unit count per course */}
                               <div className="text-xs text-muted-foreground">
                                 {unitsFromCourseNumber(item.course_number)} units
-                                {item.grade && ` · Grade: ${item.grade}`}
+                                {item.grade && (
+                                  <> · Grade: <span className="font-medium text-foreground">{item.grade}</span></>
+                                )}
                               </div>
 
                               {item.note && (
@@ -489,7 +620,7 @@ export function DegreePlanner() {
                                 </div>
                               )}
                             </div>
-                          ))
+                          );})
                         )}
                       </div>
                     </div>
@@ -498,13 +629,16 @@ export function DegreePlanner() {
               </div>
             </CardContent>
           </Card>
-        ))}
+        );
+        })}
       </div>
 
       {/* Planning tips */}
-      <Card className="bg-muted/50">
+      <Card className="bg-gradient-to-br from-muted/50 to-card border-primary/10 dark:border-primary/10">
         <CardHeader>
-          <CardTitle className="text-lg">Planning Tips</CardTitle>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <span className="text-primary">💡</span> Planning Tips
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="space-y-2 text-sm text-muted-foreground">

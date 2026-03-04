@@ -5,8 +5,6 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
-
 interface Course {
   id: number;
   subject: string;
@@ -42,12 +40,10 @@ export function ProfessorProfile() {
   useEffect(() => {
     if (!professorId) return;
 
-    fetch(`${API_BASE}/api/instructors/${professorId}?courses=true`)
+    fetch(`/api/instructors/${professorId}?courses=true`)
       .then((res) => {
         if (!res.ok) {
-          if (res.status === 404) {
-            throw new Error("Professor not found");
-          }
+          if (res.status === 404) throw new Error("Professor not found");
           throw new Error("Failed to fetch professor");
         }
         return res.json();
@@ -87,7 +83,7 @@ export function ProfessorProfile() {
   const courses = instructor.courses || [];
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-4xl mx-auto px-4 py-8">
       {/* Back Button */}
       <Button asChild variant="ghost" size="sm">
         <Link to="/professors">
@@ -118,7 +114,7 @@ export function ProfessorProfile() {
                     <span className="text-muted-foreground">/ 5.0</span>
                   </div>
                 ) : (
-                  <span className="text-muted-foreground">No rating</span>
+                  <span className="text-muted-foreground">No rating available</span>
                 )}
                 <div className="text-muted-foreground">
                   {instructor.num_ratings ?? 0} student reviews
@@ -170,36 +166,6 @@ export function ProfessorProfile() {
         </CardContent>
       </Card>
 
-      {/* Additional Stats */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Additional Info</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4">
-            {instructor.external_url && (
-              <div>
-                <div className="text-sm text-muted-foreground">External Profile</div>
-                <a 
-                  href={instructor.external_url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline"
-                >
-                  View on RateMyProfessors
-                </a>
-              </div>
-            )}
-            {instructor.last_scraped && (
-              <div>
-                <div className="text-sm text-muted-foreground">Last Updated</div>
-                <div>{new Date(instructor.last_scraped).toLocaleDateString()}</div>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Courses Taught */}
       <Card>
         <CardHeader>
@@ -225,6 +191,36 @@ export function ProfessorProfile() {
             {courses.length === 0 && (
               <p className="text-center text-muted-foreground py-4">
                 No course information available.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Student Reviews */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Student Reviews</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {instructor.external_url ? (
+              <div className="text-center space-y-3 py-4">
+                <p className="text-muted-foreground">
+                  Reviews are sourced from RateMyProfessors.
+                </p>
+                <a
+                  href={instructor.external_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  View reviews on RateMyProfessors →
+                </a>
+              </div>
+            ) : (
+              <p className="text-center text-muted-foreground py-4">
+                No reviews available yet.
               </p>
             )}
           </div>

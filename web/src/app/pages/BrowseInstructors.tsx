@@ -8,8 +8,6 @@ import { Slider } from "../components/ui/slider";
 import { Label } from "../components/ui/label";
 import { Card, CardContent } from "../components/ui/card";
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
-
 interface Instructor {
   instructor_id: number;
   name: string;
@@ -72,7 +70,7 @@ export function BrowseInstructors() {
 
   // Fetch departments
   useEffect(() => {
-    fetch(`${API_BASE}/api/instructors/departments`)
+    fetch(`/api/instructors/departments`)
       .then((res) => res.json())
       .then((data) => setDepartments(data))
       .catch(console.error);
@@ -89,7 +87,7 @@ export function BrowseInstructors() {
     if (selectedDepartment !== "all") params.set("department", selectedDepartment);
     if (minRating[0] > 0) params.set("min_rating", String(minRating[0]));
 
-    fetch(`${API_BASE}/api/instructors?${params}`)
+    fetch(`/api/instructors?${params}`)
       .then((res) => res.json())
       .then((data: InstructorsResponse) => {
         setInstructors(data.instructors || []);
@@ -105,7 +103,7 @@ export function BrowseInstructors() {
   const totalPages = Math.ceil(totalInstructors / PAGE_SIZE);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-4 py-8">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold">Browse Professors</h1>
