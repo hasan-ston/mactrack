@@ -245,7 +245,7 @@ export function Register() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-[calc(100vh-200px)] px-4 py-8">
+    <div className="flex items-center justify-center min-h-[calc(100vh-200px)] py-8">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Create an Account</CardTitle>
