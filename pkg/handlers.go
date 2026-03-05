@@ -46,7 +46,7 @@ func PostUserPlanHandler(repo *Repository) http.HandlerFunc {
 
 		// Resolve existing plan_terms row or create a new one
 		var planTermID int
-		err = repo.DB.QueryRow(`
+		err = repo.QueryRow(`
 			SELECT plan_term_id FROM plan_terms
 			WHERE user_id = ? AND year_index = ? AND season = ?`,
 			userID, body.YearIndex, body.Season,
@@ -54,23 +54,22 @@ func PostUserPlanHandler(repo *Repository) http.HandlerFunc {
 
 		if err != nil {
 			// No existing term — insert a new one
-			res, err := repo.DB.Exec(`
-				INSERT INTO plan_terms (user_id, year_index, season)
-				VALUES (?, ?, ?)`,
+			id, insertErr := repo.ExecReturningID(
+				`INSERT INTO plan_terms (user_id, year_index, season) VALUES (?, ?, ?)`,
+				"plan_term_id",
 				userID, body.YearIndex, body.Season,
 			)
-			if err != nil {
-				log.Printf("failed to create plan term: %v", err)
+			if insertErr != nil {
+				log.Printf("failed to create plan term: %v", insertErr)
 				http.Error(w, "failed to create plan term", http.StatusInternalServerError)
 				return
 			}
-			id, _ := res.LastInsertId()
 			planTermID = int(id)
 		}
 
 		// Insert the course into the resolved/created term
 		// status must be uppercase to satisfy the CHECK constraint
-		_, err = repo.DB.Exec(`
+		_, err = repo.Exec(`
 			INSERT INTO plan_items (plan_term_id, subject, course_number, status)
 			VALUES (?, ?, ?, 'PLANNED')`,
 			planTermID, body.Subject, body.CourseNumber,
@@ -136,7 +135,7 @@ func PatchUserPlanItemHandler(repo *Repository) http.HandlerFunc {
 
 		// Verify the plan item belongs to this user
 		var ownerID int
-		err = repo.DB.QueryRow(`
+		err = repo.QueryRow(`
 			SELECT pt.user_id FROM plan_items pi
 			JOIN plan_terms pt ON pi.plan_term_id = pt.plan_term_id
 			WHERE pi.plan_item_id = ?
@@ -155,7 +154,7 @@ func PatchUserPlanItemHandler(repo *Repository) http.HandlerFunc {
 		}
 
 		// Update status and grade — grade may be NULL if not provided
-		_, err = repo.DB.Exec(`
+		_, err = repo.Exec(`
 			UPDATE plan_items SET status = ?, grade = ? WHERE plan_item_id = ?
 		`, body.Status, body.Grade, itemID)
 		if err != nil {
@@ -199,7 +198,7 @@ func DeleteUserPlanItemHandler(repo *Repository) http.HandlerFunc {
 
 		// Ensure the plan_item belongs to this user by joining plan_items -> plan_terms
 		var ownerID int
-		err = repo.DB.QueryRow(`
+		err = repo.QueryRow(`
 			SELECT pt.user_id FROM plan_items pi
 			JOIN plan_terms pt ON pi.plan_term_id = pt.plan_term_id
 			WHERE pi.plan_item_id = ?
@@ -219,7 +218,7 @@ func DeleteUserPlanItemHandler(repo *Repository) http.HandlerFunc {
 		}
 
 		// Delete the plan item
-		if _, err := repo.DB.Exec(`DELETE FROM plan_items WHERE plan_item_id = ?`, itemID); err != nil {
+		if _, err := repo.Exec(`DELETE FROM plan_items WHERE plan_item_id = ?`, itemID); err != nil {
 			http.Error(w, "failed to delete plan item", http.StatusInternalServerError)
 			return
 		}
@@ -266,7 +265,7 @@ func GetUserValidationHandler(repo *Repository, svc *Service) http.HandlerFunc {
 		}
 
 		// Load the user's plan items
-		rows, err := repo.DB.Query(`
+		rows, err := repo.Query(`
             SELECT pi.plan_item_id, pi.plan_term_id, pi.subject,
                    pi.course_number, pi.status, pi.grade, pi.note
             FROM plan_items pi
@@ -380,7 +379,7 @@ func CourseBySubjectNumberHandler(repo *Repository) http.HandlerFunc {
 			Professor    string `json:"professor"`
 			Term         string `json:"term"`
 		}
-		err := repo.DB.QueryRow(`
+		err := repo.QueryRow(`
 			SELECT id, subject, course_number, course_name, professor, term
 			FROM courses WHERE subject = ? AND course_number = ?
 			LIMIT 1`, subject, number).Scan(
@@ -500,7 +499,7 @@ func ProgramsHandler(repo *Repository) http.HandlerFunc {
 			return
 		}
 
-		rows, err := repo.DB.Query(`
+		rows, err := repo.Query(`
 			SELECT program_id, poid, name, degree_type, total_units, catalog_year
 			FROM programs
 			ORDER BY degree_type, name`)
@@ -563,7 +562,7 @@ func ProgramRequirementsHandler(repo *Repository) http.HandlerFunc {
 			return
 		}
 
-		groupRows, err := repo.DB.Query(`
+		groupRows, err := repo.Query(`
 			SELECT group_id, parent_group_id, display_order, heading,
 			       heading_level, units_required, courses_required,
 			       is_elective, is_container
@@ -636,7 +635,7 @@ func ProgramRequirementsHandler(repo *Repository) http.HandlerFunc {
 		}
 
 		// Fetch all requirement courses for this program in one query
-		courseRows, err := repo.DB.Query(`
+		courseRows, err := repo.Query(`
 			SELECT rc.req_course_id, rc.group_id, rc.display_order,
 			       rc.coid, rc.course_code, rc.course_name,
 			       rc.is_or_with_next, rc.adhoc_text
@@ -741,8 +740,9 @@ func GetUserPlanHandler(repo *Repository, svc *Service) http.HandlerFunc {
 			return
 		}
 
-		// Join plan_items → plan_terms → courses to get course name in one query
-		rows, err := repo.DB.Query(`
+		// Join plan_items → plan_terms → courses to get course name in one query.
+		// All non-aggregate columns must appear in GROUP BY for PostgreSQL.
+		rows, err := repo.Query(`
 			SELECT pi.plan_item_id, pi.plan_term_id,
 			       pi.subject, pi.course_number,
 			       pi.status, pi.grade, pi.note,
@@ -753,7 +753,10 @@ func GetUserPlanHandler(repo *Repository, svc *Service) http.HandlerFunc {
 			LEFT JOIN courses c ON c.subject = pi.subject
 			       AND c.course_number = pi.course_number
 			WHERE pt.user_id = ?
-			GROUP BY pi.plan_item_id
+			GROUP BY pi.plan_item_id, pi.plan_term_id,
+			         pi.subject, pi.course_number,
+			         pi.status, pi.grade, pi.note,
+			         pt.year_index, pt.season
 			ORDER BY pt.year_index, pt.season, pi.subject, pi.course_number`,
 			userID)
 		if err != nil {
@@ -833,7 +836,7 @@ func CourseRequisitesHandler(repo *Repository) http.HandlerFunc {
 		subject := parts[0]
 		courseNumber := parts[1]
 
-		rows, err := repo.DB.Query(`
+		rows, err := repo.Query(`
 			SELECT req_subject, req_course_number, kind
 			FROM requisites
 			WHERE subject = ? AND course_number = ?

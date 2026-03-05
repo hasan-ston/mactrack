@@ -3,9 +3,12 @@ package pkg
 import (
 	"database/sql"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -26,7 +29,7 @@ var mcmasterGPAScale = map[string]float64{
 }
 
 func (r *Repository) GetUserGPA(userID int) (gpa float64, ok bool, err error) {
-	rows, err := r.DB.Query(`
+	rows, err := r.query(`
         SELECT pi.course_number, pi.grade
         FROM plan_items pi
         JOIN plan_terms pt ON pt.plan_term_id = pi.plan_term_id
@@ -71,7 +74,7 @@ func (r *Repository) GetProgramWithGroups(programID int) (*Program, error) {
 	var p Program
 	var totalUnits sql.NullInt64
 	var degreeType sql.NullString
-	err := r.DB.QueryRow(`
+	err := r.queryRow(`
         SELECT program_id, poid, name, degree_type, total_units, catalog_year
         FROM programs WHERE program_id = ?`, programID,
 	).Scan(&p.ProgramID, &p.POID, &p.Name, &degreeType, &totalUnits, &p.CatalogYear)
@@ -88,7 +91,7 @@ func (r *Repository) GetProgramWithGroups(programID int) (*Program, error) {
 	}
 
 	// Load all groups for this program
-	groupRows, err := r.DB.Query(`
+	groupRows, err := r.query(`
         SELECT group_id, program_id, parent_group_id, display_order, heading,
                heading_level, units_required, courses_required, is_elective, is_container
         FROM requirement_groups
@@ -137,7 +140,7 @@ func (r *Repository) GetProgramWithGroups(programID int) (*Program, error) {
 	}
 
 	// Load all courses for this program and attach to groups
-	courseRows, err := r.DB.Query(`
+	courseRows, err := r.query(`
         SELECT rc.req_course_id, rc.group_id, rc.display_order,
                rc.coid, rc.course_code, rc.course_name, rc.is_or_with_next, rc.adhoc_text
         FROM requirement_courses rc
@@ -219,7 +222,7 @@ func (r *Repository) GetProgramWithGroups(programID int) (*Program, error) {
 // GetRequisites returns all requisite rows for a given course (subject + course_number).
 // Returns an empty slice (not nil) if there are no requisites, so the JSON encodes as [].
 func (r *Repository) GetRequisites(subject, courseNumber string) ([]RequisiteRow, error) {
-	rows, err := r.DB.Query(`
+	rows, err := r.query(`
 		SELECT req_subject, req_course_number, kind
 		FROM requisites
 		WHERE subject = ? AND course_number = ?
@@ -243,21 +246,119 @@ func (r *Repository) GetRequisites(subject, courseNumber string) ([]RequisiteRow
 }
 
 type Repository struct {
-	DB *sql.DB
+	DB     *sql.DB
+	driver string // "postgres" or "sqlite3"
 }
 
-// NewRepository opens the SQLite database at the given path.
-func NewRepository(dbPath string) (*Repository, error) {
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, err
+// paramRe matches bare ? parameter placeholders used in SQLite-style queries.
+var paramRe = regexp.MustCompile(`\?`)
+
+// adaptQuery rewrites a query for the active driver:
+//   - For PostgreSQL: replaces ? placeholders with $1, $2, …, LIKE with ILIKE,
+//     and LIMIT -1 with LIMIT ALL.
+//   - For SQLite (and tests): returns the query unchanged.
+func (r *Repository) adaptQuery(q string) string {
+	if r.driver != "postgres" {
+		return q
 	}
-	// Simple ping to validate
+	n := 0
+	q = paramRe.ReplaceAllStringFunc(q, func(string) string {
+		n++
+		return fmt.Sprintf("$%d", n)
+	})
+	// Case-insensitive LIKE for full-text search
+	q = strings.ReplaceAll(q, " LIKE ", " ILIKE ")
+	// SQLite allows LIMIT -1 for "all rows"; PostgreSQL needs LIMIT ALL
+	q = strings.ReplaceAll(q, "LIMIT -1", "LIMIT ALL")
+	return q
+}
+
+// query is a thin wrapper around DB.Query that adapts the SQL to the driver.
+func (r *Repository) query(q string, args ...interface{}) (*sql.Rows, error) {
+	return r.DB.Query(r.adaptQuery(q), args...)
+}
+
+// queryRow is a thin wrapper around DB.QueryRow that adapts the SQL to the driver.
+func (r *Repository) queryRow(q string, args ...interface{}) *sql.Row {
+	return r.DB.QueryRow(r.adaptQuery(q), args...)
+}
+
+// exec is a thin wrapper around DB.Exec that adapts the SQL to the driver.
+func (r *Repository) exec(q string, args ...interface{}) (sql.Result, error) {
+	return r.DB.Exec(r.adaptQuery(q), args...)
+}
+
+// Query exposes the adapted query method publicly (used by handlers).
+func (r *Repository) Query(q string, args ...interface{}) (*sql.Rows, error) {
+	return r.query(q, args...)
+}
+
+// QueryRow exposes the adapted queryRow method publicly (used by handlers).
+func (r *Repository) QueryRow(q string, args ...interface{}) *sql.Row {
+	return r.queryRow(q, args...)
+}
+
+// Exec exposes the adapted exec method publicly (used by handlers).
+func (r *Repository) Exec(q string, args ...interface{}) (sql.Result, error) {
+	return r.exec(q, args...)
+}
+
+// execReturningID runs an INSERT and returns the newly created row ID.
+// For PostgreSQL it appends RETURNING <pkCol>; for SQLite it uses LastInsertId.
+func (r *Repository) execReturningID(q, pkCol string, args ...interface{}) (int64, error) {
+	if r.driver == "postgres" {
+		var id int64
+		err := r.DB.QueryRow(r.adaptQuery(q)+" RETURNING "+pkCol, args...).Scan(&id)
+		return id, err
+	}
+	res, err := r.DB.Exec(r.adaptQuery(q), args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// ExecReturningID exposes execReturningID publicly (used by handlers).
+func (r *Repository) ExecReturningID(q, pkCol string, args ...interface{}) (int64, error) {
+	return r.execReturningID(q, pkCol, args...)
+}
+
+// NewRepository opens a database connection.
+func NewRepository(dsn string) (*Repository, error) {
+	isPostgres := strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") || strings.Contains(dsn, "host=")
+
+	var db *sql.DB
+	driverName := "sqlite3"
+
+	if isPostgres {
+		// Use simple query protocol so pgx never creates named prepared statements.
+		// This is required when connecting through Supabase's PgBouncer pooler,
+		// which runs in transaction mode and does not support prepared statements.
+		cfg, err := pgx.ParseConfig(dsn)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse postgres dsn: %w", err)
+		}
+		cfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+		db = stdlib.OpenDB(*cfg)
+		driverName = "pgx"
+	} else {
+		var err error
+		db, err = sql.Open(driverName, dsn)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("cannot connect to db: %w", err)
+		return nil, fmt.Errorf("cannot connect to db (%s): %w", driverName, err)
 	}
-	return &Repository{DB: db}, nil
+	// Use canonical name "postgres" for internal dialect checks regardless of driver.
+	driver := driverName
+	if isPostgres {
+		driver = "postgres"
+	}
+	return &Repository{DB: db, driver: driver}, nil
 }
 
 // SearchCourses searches courses by subject, number, name, or professor.
@@ -306,7 +407,7 @@ func (r *Repository) SearchCourses(q, level, term string, limit, offset int) ([]
 	countQuery := fmt.Sprintf(
 		"SELECT COUNT(*) FROM courses c %s", where)
 	var total int
-	if err := r.DB.QueryRow(countQuery, args...).Scan(&total); err != nil {
+	if err := r.queryRow(countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count courses: %w", err)
 	}
 
@@ -340,7 +441,7 @@ func (r *Repository) SearchCourses(q, level, term string, limit, offset int) ([]
 		pageArgs = append(pageArgs, offset)
 	}
 
-	rows, err := r.DB.Query(pageQuery, pageArgs...)
+	rows, err := r.query(pageQuery, pageArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("search courses: %w", err)
 	}
@@ -377,7 +478,7 @@ func (r *Repository) SearchCourses(q, level, term string, limit, offset int) ([]
 
 // GetCourseByID fetches a single course by id.
 func (r *Repository) GetCourseByID(id int) (*Course, error) {
-	row := r.DB.QueryRow(`SELECT id, subject, course_number, course_name, professor, term FROM courses WHERE id = ?`, id)
+	row := r.queryRow(`SELECT id, subject, course_number, course_name, professor, term FROM courses WHERE id = ?`, id)
 	var c Course
 	var courseName, professor sql.NullString
 	if err := row.Scan(&c.ID, &c.Subject, &c.CourseNumber, &courseName, &professor, &c.Term); err != nil {
@@ -401,7 +502,7 @@ func (r *Repository) Close() error {
 
 // GetAllPrograms returns a lightweight list of programs for dropdowns.
 func (r *Repository) GetAllPrograms() ([]Program, error) {
-	rows, err := r.DB.Query(`SELECT program_id, poid, name, degree_type, total_units, catalog_year FROM programs ORDER BY name`)
+	rows, err := r.query(`SELECT program_id, poid, name, degree_type, total_units, catalog_year FROM programs ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +529,7 @@ func (r *Repository) GetAllPrograms() ([]Program, error) {
 
 // GetPlanItems fetches plan items for a user (all terms).
 func (r *Repository) GetPlanItems(userID int) ([]PlanItem, error) {
-	rows, err := r.DB.Query(`
+	rows, err := r.query(`
 		SELECT pi.plan_item_id, pi.plan_term_id, pi.subject, pi.course_number, pi.status, pi.grade, pi.note
 		FROM plan_items pi
 		JOIN plan_terms pt ON pi.plan_term_id = pt.plan_term_id
@@ -464,7 +565,7 @@ func (r *Repository) GetPlanItems(userID int) ([]PlanItem, error) {
 // GetProgramRequirements fetches a program and its full requirement group tree + courses.
 func (r *Repository) GetProgramRequirements(programID int) (*Program, error) {
 	// Load program basic info
-	row := r.DB.QueryRow(`SELECT program_id, poid, name, degree_type, total_units, catalog_year FROM programs WHERE program_id = ?`, programID)
+	row := r.queryRow(`SELECT program_id, poid, name, degree_type, total_units, catalog_year FROM programs WHERE program_id = ?`, programID)
 	var p Program
 	var totalUnits sql.NullInt64
 	if err := row.Scan(&p.ProgramID, &p.POID, &p.Name, &p.DegreeType, &totalUnits, &p.CatalogYear); err != nil {
@@ -479,7 +580,7 @@ func (r *Repository) GetProgramRequirements(programID int) (*Program, error) {
 	}
 
 	// Load groups
-	gRows, err := r.DB.Query(`
+	gRows, err := r.query(`
 		SELECT group_id, program_id, parent_group_id, display_order, heading, heading_level, units_required, courses_required, is_elective, is_container
 		FROM requirement_groups
 		WHERE program_id = ?
@@ -529,7 +630,8 @@ func (r *Repository) GetProgramRequirements(programID int) (*Program, error) {
 		groupIDs = append(groupIDs, id)
 	}
 	if len(groupIDs) > 0 {
-		// Build a query with IN (...) placeholders
+		// Build a query with positional placeholders for the IN (...) list.
+		// We always use ? here and let adaptQuery renumber them for PostgreSQL.
 		placeholders := ""
 		args := []interface{}{}
 		for i, id := range groupIDs {
@@ -545,7 +647,7 @@ func (r *Repository) GetProgramRequirements(programID int) (*Program, error) {
 			WHERE group_id IN (%s)
 			ORDER BY group_id, display_order
 		`, placeholders)
-		rcRows, err := r.DB.Query(q, args...)
+		rcRows, err := r.query(q, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -620,7 +722,7 @@ type User struct {
 // GetUserByEmail looks up a user by their email address.
 // Returns (nil, nil) if no user found — not an error, just not found.
 func (r *Repository) GetUserByEmail(email string) (*User, error) {
-	row := r.DB.QueryRow(
+	row := r.queryRow(
 		`SELECT user_id, email, display_name, password_hash, program, year_of_study
 		 FROM users WHERE email = ?`, email,
 	)
@@ -653,14 +755,11 @@ func (r *Repository) CreateUser(email, displayName, passwordHash string, program
 	} else {
 		y = nil
 	}
-	result, err := r.DB.Exec(
+	id, err := r.execReturningID(
 		`INSERT INTO users (email, display_name, password_hash, program, year_of_study) VALUES (?, ?, ?, ?, ?)`,
+		"user_id",
 		email, displayName, passwordHash, program, y,
 	)
-	if err != nil {
-		return nil, err
-	}
-	id, err := result.LastInsertId()
 	if err != nil {
 		return nil, err
 	}
@@ -681,7 +780,7 @@ func (r *Repository) CreateUser(email, displayName, passwordHash string, program
 // GetUserByID fetches a user by their numeric ID.
 // Used after token validation to attach full user info to a request.
 func (r *Repository) GetUserByID(id int) (*User, error) {
-	row := r.DB.QueryRow(
+	row := r.queryRow(
 		`SELECT user_id, email, display_name, program, year_of_study FROM users WHERE user_id = ?`, id,
 	)
 	var u User
@@ -738,7 +837,7 @@ func (r *Repository) SearchInstructors(q, department string, minRating float64, 
 	// Count total matches
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM instructors %s", where)
 	var total int
-	if err := r.DB.QueryRow(countQuery, args...).Scan(&total); err != nil {
+	if err := r.queryRow(countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count instructors: %w", err)
 	}
 
@@ -759,7 +858,7 @@ func (r *Repository) SearchInstructors(q, department string, minRating float64, 
 		pageArgs = append(pageArgs, offset)
 	}
 
-	rows, err := r.DB.Query(pageQuery, pageArgs...)
+	rows, err := r.query(pageQuery, pageArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("search instructors: %w", err)
 	}
@@ -796,7 +895,7 @@ func (r *Repository) SearchInstructors(q, department string, minRating float64, 
 
 // GetInstructorByID fetches a single instructor by their internal ID.
 func (r *Repository) GetInstructorByID(id int) (*Instructor, error) {
-	row := r.DB.QueryRow(`
+	row := r.queryRow(`
 		SELECT instructor_id, name, department, external_source, external_id, external_url,
 		       ext_avg_rating, ext_avg_difficulty, ext_num_ratings, ext_last_scraped
 		FROM instructors WHERE instructor_id = ?`, id)
@@ -830,7 +929,7 @@ func (r *Repository) GetInstructorByID(id int) (*Instructor, error) {
 
 // GetInstructorByExternalID fetches a single instructor by their external ID (e.g., RMP ID).
 func (r *Repository) GetInstructorByExternalID(externalID string) (*Instructor, error) {
-	row := r.DB.QueryRow(`
+	row := r.queryRow(`
 		SELECT instructor_id, name, department, external_source, external_id, external_url,
 		       ext_avg_rating, ext_avg_difficulty, ext_num_ratings, ext_last_scraped
 		FROM instructors WHERE external_id = ?`, externalID)
@@ -864,7 +963,7 @@ func (r *Repository) GetInstructorByExternalID(externalID string) (*Instructor, 
 
 // GetInstructorCourses fetches courses taught by a given instructor.
 func (r *Repository) GetInstructorCourses(instructorID int) ([]Course, error) {
-	rows, err := r.DB.Query(`
+	rows, err := r.query(`
 		SELECT c.id, c.subject, c.course_number, c.course_name, c.professor, c.term
 		FROM courses c
 		JOIN course_instructors ci ON c.id = ci.course_row_id
@@ -892,7 +991,7 @@ func (r *Repository) GetInstructorCourses(instructorID int) ([]Course, error) {
 
 // GetInstructorsByCourseID fetches all instructors linked to a given course.
 func (r *Repository) GetInstructorsByCourseID(courseID int) ([]Instructor, error) {
-	rows, err := r.DB.Query(`
+	rows, err := r.query(`
 		SELECT i.instructor_id, i.name, i.department, i.external_source, i.external_id, i.external_url,
 		       i.ext_avg_rating, i.ext_avg_difficulty, i.ext_num_ratings, i.ext_last_scraped
 		FROM instructors i
@@ -943,7 +1042,7 @@ func (r *Repository) GetInstructorsByName(name string) ([]Instructor, error) {
 	parts := strings.Fields(normalized)
 	lastName := parts[len(parts)-1]
 
-	rows, err := r.DB.Query(`
+	rows, err := r.query(`
 		SELECT instructor_id, name, department, external_source, external_id, external_url,
 		       ext_avg_rating, ext_avg_difficulty, ext_num_ratings, ext_last_scraped
 		FROM instructors
@@ -1005,7 +1104,7 @@ func (r *Repository) GetInstructorWithCourses(id int) (*InstructorWithCourses, e
 
 // GetAllDepartments returns a list of all distinct departments from instructors.
 func (r *Repository) GetAllDepartments() ([]string, error) {
-	rows, err := r.DB.Query(`
+	rows, err := r.query(`
 		SELECT DISTINCT department FROM instructors
 		WHERE department IS NOT NULL AND department != ''
 		ORDER BY department
