@@ -38,7 +38,7 @@ func (s *Service) ValidatePlan(planItems []PlanItem, program *Program) (Validati
 			completedSet[key] = pi
 		}
 	}
-	
+
 	prereqWarnings := []PrereqWarning{}
 	for _, pi := range planItems {
 		statusUpper := strings.ToUpper(pi.Status)
@@ -46,7 +46,7 @@ func (s *Service) ValidatePlan(planItems []PlanItem, program *Program) (Validati
 			continue
 		}
 
-		rows, err := s.Repo.DB.Query(`
+		rows, err := s.Repo.Query(`
 			SELECT req_subject, req_course_number 
 			FROM requisites 
 			WHERE subject = ? AND course_number = ? AND kind = 'PREREQ'`,

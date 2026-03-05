@@ -10,6 +10,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -27,32 +30,55 @@ type RMPInstructor struct {
 }
 
 func main() {
-	dbPath := os.Getenv("MACTRACK_DB")
-	if dbPath == "" {
-		dbPath = "database/courses.db"
+	// Load .env if present
+	_ = godotenv.Load()
+
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		dsn = os.Getenv("MACTRACK_DB")
+	}
+	if dsn == "" {
+		dsn = "database/courses.db"
 	}
 
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
+	isPostgres := strings.HasPrefix(dsn, "postgres://") ||
+		strings.HasPrefix(dsn, "postgresql://") ||
+		strings.Contains(dsn, "host=")
+
+	var db *sql.DB
+	if isPostgres {
+		cfg, err := pgx.ParseConfig(dsn)
+		if err != nil {
+			log.Fatalf("Failed to parse postgres DSN: %v", err)
+		}
+		// Simple protocol — required for Supabase PgBouncer (transaction mode)
+		cfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+		db = stdlib.OpenDB(*cfg)
+	} else {
+		var err error
+		db, err = sql.Open("sqlite3", dsn)
+		if err != nil {
+			log.Fatalf("Failed to open database: %v", err)
+		}
 	}
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
+		log.Fatalf("Failed to connect to database: %v", err)
 	}
+	log.Printf("Connected to database (postgres=%v)", isPostgres)
 
 	rmpData, err := loadRMPData("rmp.json")
 	if err != nil {
 		log.Fatalf("Failed to load RMP data: %v", err)
 	}
 
-	instructorCount, linkCount, err := seedInstructors(db, rmpData)
+	instructorCount, _, err := seedInstructors(db, rmpData, isPostgres)
 	if err != nil {
 		log.Fatalf("Failed to seed instructors: %v", err)
 	}
 
-	linkCount, err = linkInstructorsToCourses(db)
+	linkCount, err := linkInstructorsToCourses(db, isPostgres)
 	if err != nil {
 		log.Fatalf("Failed to link instructors to courses: %v", err)
 	}
@@ -89,14 +115,33 @@ func extractNumericID(base64ID string) string {
 	return ""
 }
 
-func seedInstructors(db *sql.DB, instructors []RMPInstructor) (int, int, error) {
-	insertStmt := `
-		INSERT OR REPLACE INTO instructors (
-			name, name_normalized, department,
-			external_source, external_id, external_url,
-			ext_avg_rating, ext_avg_difficulty, ext_num_ratings
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
+func seedInstructors(db *sql.DB, instructors []RMPInstructor, isPostgres bool) (int, int, error) {
+	var insertStmt string
+	if isPostgres {
+		insertStmt = `
+			INSERT INTO instructors (
+				name, name_normalized, department,
+				external_source, external_id, external_url,
+				ext_avg_rating, ext_avg_difficulty, ext_num_ratings
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			ON CONFLICT (name_normalized) DO UPDATE SET
+				department        = EXCLUDED.department,
+				external_source   = EXCLUDED.external_source,
+				external_id       = EXCLUDED.external_id,
+				external_url      = EXCLUDED.external_url,
+				ext_avg_rating    = EXCLUDED.ext_avg_rating,
+				ext_avg_difficulty= EXCLUDED.ext_avg_difficulty,
+				ext_num_ratings   = EXCLUDED.ext_num_ratings
+		`
+	} else {
+		insertStmt = `
+			INSERT OR REPLACE INTO instructors (
+				name, name_normalized, department,
+				external_source, external_id, external_url,
+				ext_avg_rating, ext_avg_difficulty, ext_num_ratings
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`
+	}
 
 	count := 0
 	tx, err := db.Begin()
@@ -146,7 +191,7 @@ func seedInstructors(db *sql.DB, instructors []RMPInstructor) (int, int, error) 
 	return count, 0, nil
 }
 
-func linkInstructorsToCourses(db *sql.DB) (int, error) {
+func linkInstructorsToCourses(db *sql.DB, isPostgres bool) (int, error) {
 	type courseProf struct {
 		ID        int
 		Professor string
@@ -170,35 +215,56 @@ func linkInstructorsToCourses(db *sql.DB) (int, error) {
 
 	splitRegex := regexp.MustCompile(`[,\n\r]+`)
 
-	// Exact match by full normalized name
-	exactStmt, err := db.Prepare(`
-		INSERT OR IGNORE INTO course_instructors (course_row_id, instructor_id)
-		SELECT ?, instructor_id FROM instructors WHERE name_normalized = ?
-	`)
+	var exactSQL, fuzzySQL string
+	if isPostgres {
+		exactSQL = `
+			INSERT INTO course_instructors (course_row_id, instructor_id)
+			SELECT $1, instructor_id FROM instructors WHERE name_normalized = $2
+			ON CONFLICT DO NOTHING
+		`
+		fuzzySQL = `
+			INSERT INTO course_instructors (course_row_id, instructor_id)
+			SELECT $1, instructor_id FROM instructors
+			WHERE (
+				substr(name_normalized, strpos(name_normalized, ' ') + 1) = $2
+				OR name_normalized ILIKE $3
+			)
+			AND (
+				split_part(name_normalized, ' ', 1) = $4
+				OR left(name_normalized, 1) = $5
+			)
+			LIMIT 1
+			ON CONFLICT DO NOTHING
+		`
+	} else {
+		exactSQL = `
+			INSERT OR IGNORE INTO course_instructors (course_row_id, instructor_id)
+			SELECT ?, instructor_id FROM instructors WHERE name_normalized = ?
+		`
+		fuzzySQL = `
+			INSERT OR IGNORE INTO course_instructors (course_row_id, instructor_id)
+			SELECT ?, instructor_id FROM instructors
+			WHERE (
+				substr(name_normalized, instr(name_normalized, ' ') + 1) = ?
+				OR name_normalized LIKE ?
+			)
+			AND (
+				substr(name_normalized, 1, instr(name_normalized, ' ') - 1) = ?
+				OR substr(name_normalized, 1, 1) = ?
+			)
+			LIMIT 1
+		`
+	}
+
+	exactStmt, err := db.Prepare(exactSQL)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("prepare exact: %w", err)
 	}
 	defer exactStmt.Close()
 
-	// Fuzzy: match by last name where there's exactly one instructor with that last name
-	// This catches "Kee Howe Yong" matching "Kee Yong" (last name = yong)
-	fuzzyStmt, err := db.Prepare(`
-		INSERT OR IGNORE INTO course_instructors (course_row_id, instructor_id)
-		SELECT ?, instructor_id FROM instructors
-		WHERE (
-			-- last word in the normalized name matches the course professor's last word
-			substr(name_normalized, instr(name_normalized, ' ') + 1) = ?
-			OR name_normalized LIKE ? 
-		)
-		AND (
-			-- first name/initial also matches to avoid false positives
-			substr(name_normalized, 1, instr(name_normalized, ' ') - 1) = ?
-			OR substr(name_normalized, 1, 1) = ?
-		)
-		LIMIT 1
-	`)
+	fuzzyStmt, err := db.Prepare(fuzzySQL)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("prepare fuzzy: %w", err)
 	}
 	defer fuzzyStmt.Close()
 

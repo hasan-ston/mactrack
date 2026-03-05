@@ -15,6 +15,7 @@ build/
 # Env and secrets
 .env
 .env.*
+!.env.example
 
 # System
 .DS_Store
@@ -32,3 +33,5 @@ web/package-lock.json
 __pycache__
 #database/courses.db
 codex.md
+
+CLAUDE.md
