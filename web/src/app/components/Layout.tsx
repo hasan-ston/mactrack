@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Outlet, Link, useLocation } from "react-router";
+import { Outlet, Link, useLocation, useNavigate} from "react-router";
 import { useTheme } from "next-themes";
 import {
   BookOpen,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { FeedbackWidget } from "./FeedbackWidget";
+import { useAuth } from "../contexts/AuthContext";
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -64,11 +65,18 @@ const navLinks = [
 
 export function Layout() {
   const location = useLocation();
+  const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const isAuthPage = location.pathname === "/login" || location.pathname === "/signup";
+  const navigate = useNavigate();
 
   // Close mobile menu on route change
   useEffect(() => setMobileOpen(false), [location.pathname]);
+
+  const handleLogout = () => {
+    logout();
+    navigate("/");
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -92,11 +100,10 @@ export function Layout() {
               <Link
                 key={to}
                 to={to}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  match(location.pathname)
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${match(location.pathname)
                     ? "bg-white/15 text-[#ffc845]"
                     : "text-white/90 hover:bg-white/10 hover:text-white"
-                }`}
+                  }`}
               >
                 {label}
               </Link>
@@ -106,8 +113,7 @@ export function Layout() {
           {/* Right actions */}
           <div className="flex items-center gap-1">
             <ThemeToggle />
-
-            {!isAuthPage && (
+            {!isAuthPage && !user && (
               <>
                 <Button
                   asChild
@@ -133,6 +139,30 @@ export function Layout() {
               </>
             )}
 
+            {!isAuthPage && user && (
+              <>
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="sm"
+                  className="hidden md:inline-flex text-white hover:bg-white/10 hover:text-[#ffc845]"
+                >
+                  <Link to="/dashboard">
+                    <LayoutDashboard className="h-4 w-4 mr-1.5" />
+                    Dashboard
+                  </Link>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLogout}
+                  className="hidden md:inline-flex text-white hover:bg-white/10 hover:text-[#ffc845]"
+                >
+                  Logout
+                </Button>
+              </>
+            )}
+
             {/* Mobile hamburger */}
             <Button
               variant="ghost"
@@ -153,30 +183,50 @@ export function Layout() {
               <Link
                 key={to}
                 to={to}
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  match(location.pathname)
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${match(location.pathname)
                     ? "bg-white/15 text-[#ffc845]"
                     : "text-white hover:bg-white/10"
-                }`}
+                  }`}
               >
                 <Icon className="h-4 w-4" />
                 {label}
               </Link>
             ))}
-            <div className="pt-2 border-t border-white/10 flex gap-2">
-              <Button asChild variant="ghost" size="sm" className="flex-1 text-white hover:bg-white/10">
-                <Link to="/login">
-                  <LogIn className="h-4 w-4 mr-1.5" />
-                  Login
-                </Link>
-              </Button>
-              <Button asChild size="sm" className="flex-1 bg-[#ffc845] text-[#7A003C] hover:bg-[#ffd96b] font-semibold">
-                <Link to="/signup">
-                  <User className="h-4 w-4 mr-1.5" />
-                  Sign Up
-                </Link>
-              </Button>
-            </div>
+            {!isAuthPage && (
+              !user ? (
+                <div className="pt-2 border-t border-white/10 flex gap-2">
+                  <Button asChild variant="ghost" size="sm" className="flex-1 text-white hover:bg-white/10">
+                    <Link to="/login">
+                      <LogIn className="h-4 w-4 mr-1.5" />
+                      Login
+                    </Link>
+                  </Button>
+                  <Button asChild size="sm" className="flex-1 bg-[#ffc845] text-[#7A003C] hover:bg-[#ffd96b] font-semibold">
+                    <Link to="/signup">
+                      <User className="h-4 w-4 mr-1.5" />
+                      Sign Up
+                    </Link>
+                  </Button>
+                </div>
+              ) : (
+                <div className="pt-2 border-t border-white/10 flex gap-2">
+                  <Button asChild variant="ghost" size="sm" className="flex-1 text-white hover:bg-white/10">
+                    <Link to="/dashboard">
+                      <LayoutDashboard className="h-4 w-4 mr-1.5" />
+                      Dashboard
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleLogout}
+                    className="flex-1 text-white hover:bg-white/10"
+                  >
+                    Logout
+                  </Button>
+                </div>
+              )
+            )}
           </div>
         )}
       </header>
