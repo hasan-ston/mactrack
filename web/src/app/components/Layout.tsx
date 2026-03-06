@@ -13,6 +13,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  UsersRound,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { FeedbackWidget } from "./FeedbackWidget";
@@ -226,12 +227,15 @@ export function Layout() {
               </ul>
             </div>
             <div>
-              <h3 className="font-semibold mb-3 text-foreground">Contact</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                McMaster University<br />
-                Hamilton, ON L8S 4L8<br />
-                Canada
-              </p>
+              <h3 className="font-semibold mb-3 text-foreground">Project</h3>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li>
+                  <Link to="/contributors" className="flex items-center hover:text-primary font-medium text-foreground transition-colors">
+                    <UsersRound className="w-4 h-4 mr-2" />
+                    Contributors
+                  </Link>
+                </li>
+              </ul>
             </div>
           </div>
           <div className="mt-8 pt-6 border-t text-center text-sm text-muted-foreground">

@@ -6,17 +6,14 @@ import {
   BookOpen,
   GraduationCap,
   Star,
-  TrendingUp,
   ChevronRight,
   Sparkles,
   Users,
-  Award,
   ArrowRight,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { CourseCard } from "../components/CourseCard";
-import { courses, featuredCourses } from "../data/mockData";
+
 
 // ------- Animated count-up -------
 function CountUp({ end, suffix = "", duration = 1800 }: { end: number; suffix?: string; duration?: number }) {
@@ -370,46 +367,7 @@ export function Home() {
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════
-          FEATURED COURSES
-      ══════════════════════════════════════════ */}
-      <section className="container mx-auto px-4 py-10">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-60px" }}
-          transition={{ duration: 0.5 }}
-          className="flex items-end justify-between mb-8"
-        >
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Award className="h-5 w-5 text-primary" />
-              <span className="text-sm font-medium text-primary uppercase tracking-wide">Top Rated</span>
-            </div>
-            <h2 className="text-3xl font-bold text-foreground">Featured Courses</h2>
-            <p className="text-muted-foreground mt-1">Highest-rated courses this semester</p>
-          </div>
-          <Button asChild variant="outline" className="hidden sm:flex items-center gap-1.5">
-            <Link to="/courses">
-              View All <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
-        </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {featuredCourses.map((course, i) => (
-            <motion.div
-              key={course.id}
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-30px" }}
-              transition={{ duration: 0.45, delay: i * 0.1 }}
-            >
-              <CourseCard course={course} />
-            </motion.div>
-          ))}
-        </div>
-      </section>
 
       {/* ══════════════════════════════════════════
           STATS BAND
@@ -459,38 +417,7 @@ export function Home() {
         </motion.div>
       </section>
 
-      {/* ══════════════════════════════════════════
-          TRENDING COURSES
-      ══════════════════════════════════════════ */}
-      <section className="container mx-auto px-4 py-10">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-60px" }}
-          transition={{ duration: 0.5 }}
-          className="flex items-center gap-2 mb-8"
-        >
-          <TrendingUp className="h-5 w-5 text-primary" />
-          <div>
-            <h2 className="text-3xl font-bold text-foreground">Trending This Term</h2>
-            <p className="text-muted-foreground mt-0.5">Most viewed courses right now</p>
-          </div>
-        </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {courses.slice(3, 6).map((course, i) => (
-            <motion.div
-              key={course.id}
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-30px" }}
-              transition={{ duration: 0.45, delay: i * 0.1 }}
-            >
-              <CourseCard course={course} />
-            </motion.div>
-          ))}
-        </div>
-      </section>
 
       {/* ══════════════════════════════════════════
           BOTTOM CTA

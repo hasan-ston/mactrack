@@ -1,17 +1,9 @@
--- ============================================================================
--- MacTrack — PostgreSQL schema for Supabase
---
--- Run this once against your Supabase database to create all tables, indexes,
--- and views that the Go backend expects.
---
 -- Usage (psql):
 --   psql "postgresql://postgres:[YOUR-PASSWORD]@db.xgcbkwbewudvcjnernfb.supabase.co:5432/postgres" \
 --        -f migrations/postgres_schema.sql
 --
 -- Or paste it in Supabase → SQL Editor.
--- ============================================================================
 
--- ── core course catalogue ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS courses (
     id            SERIAL PRIMARY KEY,
     subject       TEXT NOT NULL,

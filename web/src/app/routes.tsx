@@ -10,6 +10,7 @@ import { DegreePlanner } from "./pages/DegreePlanner";
 import Login from "./pages/Login";
 import { Register } from "./pages/Register";
 import { NotFound } from "./pages/NotFound";
+import { Contributors } from "./pages/Contributors";
 
 export const router = createBrowserRouter([
   {
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
       { path: "planner", Component: DegreePlanner },
       { path: "login", Component: Login },
       { path: "signup", Component: Register },
+      { path: "contributors", Component: Contributors },
       { path: "*", Component: NotFound },
     ],
   },
