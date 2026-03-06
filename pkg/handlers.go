@@ -361,6 +361,95 @@ func GetUserGPAHandler(repo *Repository) http.HandlerFunc {
 	}
 }
 
+// PatchUserProfileHandler serves PATCH /api/users/{id}
+// Updates the user's program and/or year_of_study.
+// Only supplied (non-null) JSON fields are applied; omitting a field leaves it unchanged.
+func PatchUserProfileHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		idStr := strings.TrimPrefix(r.URL.Path, "/api/users/")
+		userID, err := strconv.Atoi(strings.Trim(idStr, "/"))
+		if err != nil || userID == 0 {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			Program     *string `json:"program"`
+			YearOfStudy *int    `json:"year_of_study"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if err := repo.UpdateUserProfile(userID, body.Program, body.YearOfStudy); err != nil {
+			log.Printf("update profile: %v", err)
+			http.Error(w, "failed to update profile", http.StatusInternalServerError)
+			return
+		}
+
+		u, err := repo.GetUserByID(userID)
+		if err != nil || u == nil {
+			http.Error(w, "failed to fetch updated user", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(u)
+	}
+}
+
+// PostAdvanceYearHandler serves POST /api/users/{id}/advance-year
+// Increments the user's year_of_study by 1 and bulk-marks PLANNED/IN_PROGRESS
+// plan items from earlier year buckets as COMPLETED.
+//
+// Optional JSON body: { "specialization": "<program name>" }
+// When specialization is provided, users.program is also updated (used when
+// Engineering I students choose a discipline for Year 2+).
+//
+// Returns { "new_year": int, "completed_count": int, "new_program": string }.
+func PostAdvanceYearHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		idStr := strings.TrimPrefix(r.URL.Path, "/api/users/")
+		idStr = strings.TrimSuffix(idStr, "/advance-year")
+		userID, err := strconv.Atoi(strings.Trim(idStr, "/"))
+		if err != nil || userID == 0 {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		// Parse optional body — body may be absent or empty, so ignore decode errors.
+		var body struct {
+			Specialization *string `json:"specialization"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+
+		newYear, completedCount, newProgram, err := repo.AdvanceUserYear(userID, body.Specialization)
+		if err != nil {
+			log.Printf("advance year: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"new_year":        newYear,
+			"completed_count": completedCount,
+			"new_program":     newProgram,
+		})
+	}
+}
+
 // CourseBySubjectNumberHandler serves GET /api/courses/{subject}/{number}
 // Used by DegreePlanner and CourseDetail when navigating by subject+number
 // instead of numeric ID.

@@ -802,6 +802,90 @@ func (r *Repository) GetUserByID(id int) (*User, error) {
 	return &u, nil
 }
 
+// UpdateUserProfile updates the user's program and/or year_of_study.
+// Pass nil for a field to leave it unchanged.
+func (r *Repository) UpdateUserProfile(userID int, program *string, yearOfStudy *int) error {
+	// Load current values so we only replace what was explicitly supplied.
+	u, err := r.GetUserByID(userID)
+	if err != nil {
+		return err
+	}
+	if u == nil {
+		return fmt.Errorf("user %d not found", userID)
+	}
+	if program != nil {
+		u.Program = program
+	}
+	if yearOfStudy != nil {
+		u.YearOfStudy = yearOfStudy
+	}
+	// Convert *int to interface{} so sql.Exec can bind NULL correctly.
+	var y interface{}
+	if u.YearOfStudy != nil {
+		y = *u.YearOfStudy
+	}
+	_, err = r.exec(
+		`UPDATE users SET program = ?, year_of_study = ? WHERE user_id = ?`,
+		u.Program, y, userID,
+	)
+	return err
+}
+
+// AdvanceUserYear increments year_of_study by 1 (ceiling 8) and bulk-marks any
+// PLANNED or IN_PROGRESS plan items from prior year buckets as COMPLETED.
+// If newProgram is non-nil, the user's program is also updated to that value
+// (used when an Engineering I student chooses a specialization).
+// Returns the new year, number of auto-completed items, and the final program name.
+func (r *Repository) AdvanceUserYear(userID int, newProgram *string) (newYear, completedCount int, finalProgram string, err error) {
+	u, err := r.GetUserByID(userID)
+	if err != nil {
+		return 0, 0, "", err
+	}
+	if u == nil {
+		return 0, 0, "", fmt.Errorf("user %d not found", userID)
+	}
+
+	currentYear := 1
+	if u.YearOfStudy != nil {
+		currentYear = *u.YearOfStudy
+	}
+	newYear = currentYear + 1
+	if newYear > 8 {
+		return currentYear, 0, "", fmt.Errorf("already at maximum year (8)")
+	}
+
+	// Bulk-complete all planned/in-progress items that belong to past year buckets.
+	// The subquery pattern works on both SQLite and PostgreSQL.
+	result, err := r.exec(`
+		UPDATE plan_items SET status = 'COMPLETED'
+		WHERE plan_item_id IN (
+			SELECT pi.plan_item_id
+			FROM plan_items pi
+			JOIN plan_terms pt ON pi.plan_term_id = pt.plan_term_id
+			WHERE pt.user_id = ?
+			  AND pt.year_index < ?
+			  AND pi.status IN ('PLANNED', 'IN_PROGRESS')
+		)`, userID, newYear)
+	if err != nil {
+		return 0, 0, "", fmt.Errorf("bulk-complete past items: %w", err)
+	}
+	affected, _ := result.RowsAffected()
+
+	// Persist the new year (and optionally the new program) on the user row.
+	if err = r.UpdateUserProfile(userID, newProgram, &newYear); err != nil {
+		return 0, 0, "", fmt.Errorf("update profile: %w", err)
+	}
+
+	// Determine the program name to echo back to the caller.
+	if newProgram != nil {
+		finalProgram = *newProgram
+	} else if u.Program != nil {
+		finalProgram = *u.Program
+	}
+
+	return newYear, int(affected), finalProgram, nil
+}
+
 // SearchInstructors searches instructors by name or department.
 // Supports filtering by min_rating and department.
 // limit ≤ 0 means no cap. offset is 0-based.
