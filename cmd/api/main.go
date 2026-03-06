@@ -180,6 +180,9 @@ func main() {
 		http.NotFound(w, r)
 	})
 
+	// --- Feedback route (public — sends an email to the team) ---
+	http.HandleFunc("/api/feedback", pkg.FeedbackHandler())
+
 	addr := ":8080"
 	if a := os.Getenv("PORT"); a != "" {
 		addr = ":" + a

@@ -15,6 +15,7 @@ import {
   Monitor,
 } from "lucide-react";
 import { Button } from "./ui/button";
+import { FeedbackWidget } from "./FeedbackWidget";
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -238,6 +239,8 @@ export function Layout() {
           </div>
         </div>
       </footer>
+      {/* Feedback widget — unobtrusive floating button, bottom-right */}
+      <FeedbackWidget />
     </div>
   );
 }
