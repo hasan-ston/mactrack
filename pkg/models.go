@@ -5,15 +5,15 @@ import "strconv"
 // Core models for Course, Professor, Review
 
 type Course struct {
-	ID           int      `json:"id"`
-	Subject      string   `json:"subject"`
-	CourseNumber string   `json:"course_number"`
-	CourseName   string   `json:"course_name"`
-	Professor    string   `json:"professor"`
-	Term         string   `json:"term"`
-	AvgRating    *float64 `json:"avg_rating,omitempty"`
+	ID            int      `json:"id"`
+	Subject       string   `json:"subject"`
+	CourseNumber  string   `json:"course_number"`
+	CourseName    string   `json:"course_name"`
+	Professor     string   `json:"professor"`
+	Term          string   `json:"term"`
+	AvgRating     *float64 `json:"avg_rating,omitempty"`
 	AvgDifficulty *float64 `json:"avg_difficulty,omitempty"`
-	NumRatings   *int     `json:"num_ratings,omitempty"`
+	NumRatings    *int     `json:"num_ratings,omitempty"`
 }
 
 type Professor struct {
@@ -108,6 +108,11 @@ type GroupResult struct {
 	UnitsCompleted int      `json:"units_completed"`
 	UnitsRequired  int      `json:"units_required"`
 	MissingCourses []string `json:"missing_courses"`
+	// IsHeader marks empty section-divider groups (e.g. "Level II: 37 Units").
+	// These are not trackable requirements — the frontend renders them as
+	// collapsible section headers around their following sub-requirement groups.
+	IsHeader     bool `json:"is_header"`
+	HeadingLevel int  `json:"heading_level"`
 }
 
 type ValidationResult struct {
@@ -117,6 +122,8 @@ type ValidationResult struct {
 	Groups              []GroupResult   `json:"groups"`
 	PrereqWarnings      []PrereqWarning `json:"prereq_warnings"`
 }
+
+// RecommendedCourse is returned by the recommendations endpoint.
 
 func UnitsFromCourseNumber(courseNumber string, defaultUnits int) int {
 	if len(courseNumber) < 2 {

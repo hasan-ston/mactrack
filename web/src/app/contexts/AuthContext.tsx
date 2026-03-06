@@ -22,6 +22,8 @@ interface AuthContextType {
   ) => Promise<void>;
   logout: () => void;
   getAccessToken: () => Promise<string | null>; // Handles refresh automatically
+  /** Merge updated profile fields into local auth state (call after a successful PATCH /api/users/:id). */
+  updateUser: (fields: { program?: string | null; yearOfStudy?: number | null }) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -132,6 +134,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  // updateUser merges changed profile fields into local state + localStorage.
+  // The caller is responsible for persisting the change to the backend first.
+  const updateUser = (fields: { program?: string | null; yearOfStudy?: number | null }) => {
+    setUser(prev => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...fields };
+      localStorage.setItem(USER_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const register = async (
     email: string,
     password: string,
@@ -168,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout, getAccessToken }}>
+    <AuthContext.Provider value={{ user, isLoading, login, register, logout, getAccessToken, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

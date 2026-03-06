@@ -128,6 +128,19 @@ func main() {
 			return
 		}
 
+		// Year advance: POST /api/users/:id/advance-year
+		if strings.HasSuffix(r.URL.Path, "/advance-year") {
+			pkg.RequireAuth(pkg.RequireOwner(pkg.PostAdvanceYearHandler(repo)))(w, r)
+			return
+		}
+
+		// Profile update: PATCH /api/users/:id  (bare — no sub-path)
+		idPart := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/users/"), "/")
+		if r.Method == http.MethodPatch && !strings.Contains(idPart, "/") {
+			pkg.RequireAuth(pkg.RequireOwner(pkg.PatchUserProfileHandler(repo)))(w, r)
+			return
+		}
+
 		// Validation route: GET /api/users/:id/validation
 		if strings.HasSuffix(r.URL.Path, "/validation") {
 			pkg.RequireAuth(pkg.RequireOwner(pkg.GetUserValidationHandler(repo, svc)))(w, r)

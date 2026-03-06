@@ -93,11 +93,37 @@ func (s *Service) ValidatePlan(planItems []PlanItem, program *Program) (Validati
 
 	var walkGroup func(g RequirementGroup)
 	walkGroup = func(g RequirementGroup) {
-		// Container groups (headings like "Level II: 30 Units") have no direct
-		// courses — just recurse into their children and skip adding a result row.
-		if g.IsContainer || (len(g.Courses) == 0 && len(g.Children) > 0) {
+		// Case 1: explicit container flag — just recurse into children.
+		if g.IsContainer {
 			for _, child := range g.Children {
 				walkGroup(child)
+			}
+			return
+		}
+
+		// Case 2: no courses and has children — heading group that organises child groups.
+		if len(g.Courses) == 0 && len(g.Children) > 0 {
+			for _, child := range g.Children {
+				walkGroup(child)
+			}
+			return
+		}
+
+		// Case 3: no courses, no children, and no explicit unit/course requirement.
+		// These are section-divider headings (e.g. "Level II: 37 Units", "Level III: 38 Units")
+		// or purely informational entries ("Note", "Admission to Level II...").
+		// Emit heading_level >= 3 dividers as IsHeader entries so the frontend can
+		// group sub-requirements under collapsible year-level sections.
+		// Lower levels (heading_level < 3) are noise — skip them silently.
+		if len(g.Courses) == 0 && len(g.Children) == 0 &&
+			g.UnitsRequired == nil && g.CoursesRequired == nil {
+			if g.HeadingLevel >= 3 {
+				groupResults = append(groupResults, GroupResult{
+					Heading:        g.Heading,
+					IsHeader:       true,
+					HeadingLevel:   g.HeadingLevel,
+					MissingCourses: []string{},
+				})
 			}
 			return
 		}
