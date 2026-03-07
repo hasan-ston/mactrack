@@ -458,7 +458,7 @@ export function Register() {
 
           </CardContent>
 
-          <CardFooter className="flex flex-col space-y-4">
+          <CardFooter className="flex flex-col space-y-4 pt-2">
             <Button type="submit" className="w-full" disabled={loading}>
               <UserPlus className="h-4 w-4 mr-2" />
               {loading ? "Creating account..." : "Create Account"}
