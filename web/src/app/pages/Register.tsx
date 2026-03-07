@@ -57,19 +57,52 @@ function ProgramPicker({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Filter programs by search query using multi-token AND matching:
-  // split the query on whitespace and require every token to appear
-  // somewhere in the program name — so "engineer i" finds all Engineering
-  // programs even though the string "engineer i" never appears verbatim.
+
+  function normalizeText(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/&/g, " and ")
+      .replace(/co[\s-]?op/g, " coop ")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  // Filter programs by query and rank the best matches first.
+  // Matches are normalized and scored so starts-with and word-start matches
+  // appear above weaker contains matches, reducing how much users need to scroll.
+
   const filtered = query.trim() === ""
     ? programs
     : (() => {
-        const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-        return programs.filter(p => {
-          const name = p.name.toLowerCase();
-          return tokens.every(token => name.includes(token));
-        });
-      })();
+      const normalizedQuery = normalizeText(query);
+      const tokens = normalizedQuery.split(" ").filter(Boolean);
+
+      return programs
+        .map(program => {
+          const name = normalizeText(program.name);
+
+          const nameStartsWithQuery = name.startsWith(normalizedQuery);
+          const allTokensInName = tokens.every(token => name.includes(token));
+          const wordStarts = tokens.every(token =>
+            name.split(" ").some(word => word.startsWith(token))
+          );
+
+          let score = 0;
+          //arbitrary scores rec by AI, can be tweaked if we need
+          if (nameStartsWithQuery) score += 100;
+          if (allTokensInName) score += 60;
+          if (wordStarts) score += 30;
+
+          return { program, score };
+        })
+        .filter(result => result.score > 0)
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return a.program.name.localeCompare(b.program.name);
+        })
+        .map(result => result.program);
+    })();
 
   const handleSelect = (name: string) => {
     onChange(name);
@@ -128,9 +161,8 @@ function ProgramPicker({
                   key={p.program_id}
                   type="button"
                   onClick={() => handleSelect(p.name)}
-                  className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors ${
-                    value === p.name ? "bg-primary/10 text-primary font-medium" : ""
-                  }`}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors ${value === p.name ? "bg-primary/10 text-primary font-medium" : ""
+                    }`}
                 >
                   <div className="truncate">{p.name}</div>
                   {p.degree_type && (
@@ -381,9 +413,8 @@ export function Register() {
                     {[1, 2, 3, 4].map(level => (
                       <div
                         key={level}
-                        className={`h-1.5 flex-1 rounded-full transition-colors ${
-                          level <= strength.score ? strength.color : "bg-muted"
-                        }`}
+                        className={`h-1.5 flex-1 rounded-full transition-colors ${level <= strength.score ? strength.color : "bg-muted"
+                          }`}
                       />
                     ))}
                   </div>
