@@ -1,4 +1,0 @@
-# Cloudflare Pages — SPA fallback
-# All paths that don't match a static file are served index.html so
-# React Router can handle client-side routing (e.g. /courses/2C03 on hard refresh).
-/*    /index.html   200

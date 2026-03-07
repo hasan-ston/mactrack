@@ -538,7 +538,6 @@ func CoursesHandler(repo *Repository) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=60")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"courses": courses,
 			"total":   total,
@@ -630,7 +629,6 @@ func ProgramsHandler(repo *Repository) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=60")
 		json.NewEncoder(w).Encode(programs)
 	}
 }
@@ -1070,7 +1068,6 @@ func InstructorsHandler(repo *Repository) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=60")
 		json.NewEncoder(w).Encode(response{
 			Instructors: instructors,
 			Total:       total,

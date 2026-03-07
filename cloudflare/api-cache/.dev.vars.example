@@ -1,8 +1,0 @@
-# Local dev variables for Wrangler (`wrangler dev`)
-# Copy this file to .dev.vars (gitignored) and fill in real values.
-
-# The Go API origin to proxy to
-ORIGIN_URL=http://localhost:8080
-
-# The frontend origin to allow via CORS
-ALLOWED_ORIGIN=http://localhost:5173
