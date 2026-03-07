@@ -5,6 +5,17 @@
 const ACCESS_TOKEN_KEY = "mactrack_access";
 const REFRESH_TOKEN_KEY = "mactrack_refresh";
 
+// In production the frontend (Cloudflare Pages) lives on a different origin
+// from the API (AWS Lambda). Set VITE_API_BASE_URL in Cloudflare Pages env
+// vars to your Lambda API Gateway URL, e.g. https://abc123.execute-api.us-east-1.amazonaws.com/prod
+// In dev this is empty, so paths like /api/... hit the Vite proxy on :8080.
+const API_BASE: string = (import.meta.env.VITE_API_BASE_URL as string) ?? "";
+
+// Prepend the base URL to an API path.
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
 // Checks whether the stored access token is expired (with a 30s buffer).
 function isTokenExpired(token: string): boolean {
   try {
@@ -22,7 +33,7 @@ async function refreshAccessToken(): Promise<string | null> {
   if (!refreshToken) return null;
 
   try {
-    const res = await fetch("/api/auth/refresh", {
+    const res = await fetch(apiUrl("/api/auth/refresh"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),
@@ -64,7 +75,7 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
     token = refreshed;
   }
 
-  return fetch(url, {
+  return fetch(apiUrl(url), {
     ...options,
     headers: {
       "Content-Type": "application/json",

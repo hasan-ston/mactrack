@@ -8,6 +8,8 @@ require (
 )
 
 require (
+	github.com/aws/aws-lambda-go v1.53.0
+	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/joho/godotenv v1.5.1

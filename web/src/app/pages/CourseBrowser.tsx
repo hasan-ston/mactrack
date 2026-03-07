@@ -11,6 +11,7 @@ import { Badge } from "../components/ui/badge";
 import { courses as mockCourses, Course as MockCourse } from "../data/mockData";
 import { CourseCard } from "../components/CourseCard";
 import { unitsFromCourseNumber } from "../lib/courseUtils";
+import { apiUrl } from "../lib/api";
 
 const PAGE_SIZE = 20;
 
@@ -97,7 +98,7 @@ export function CourseBrowser() {
     if (selectedLevel !== "all") params.set("level", selectedLevel);
     if (selectedTerm !== "all") params.set("term", selectedTerm);
 
-    fetch(`/api/courses?${params}`)
+    fetch(apiUrl(`/api/courses?${params}`))
       .then((res) => {
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         return res.json();

@@ -1,6 +1,7 @@
 import { useParams, Link } from "react-router";
 import { useEffect, useState } from "react";
 import { ArrowLeft, Users, Star, BookOpen } from "lucide-react";
+import { apiUrl } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -40,7 +41,7 @@ export function ProfessorProfile() {
   useEffect(() => {
     if (!professorId) return;
 
-    fetch(`/api/instructors/${professorId}?courses=true`)
+    fetch(apiUrl(`/api/instructors/${professorId}?courses=true`))
       .then((res) => {
         if (!res.ok) {
           if (res.status === 404) throw new Error("Professor not found");

@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { useAuth } from "../contexts/AuthContext";
-import { authFetch } from "../lib/api";
+import { authFetch, apiUrl } from "../lib/api";
 import { unitsFromCourseNumber } from "../lib/courseUtils";
 import { getSubjectColor } from "../data/mockData";
 
@@ -137,7 +137,7 @@ export function DegreePlanner() {
   // The multi-token backend search means "compsci 2" or "software eng" work correctly.
   const searchCourses = useCallback((q: string) => {
     setSearchLoading(true);
-    fetch(`/api/courses?q=${encodeURIComponent(q)}&limit=50`)
+    fetch(apiUrl(`/api/courses?q=${encodeURIComponent(q)}&limit=50`))
       .then(res => res.json())
       .then((data: { courses: APICourse[]; total: number }) => {
         const results = data?.courses ?? [];

@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: mactrack Go API on AWS Lambda + API Gateway HTTP API
+
+# ---------------------------------------------------------------------------
+# Parameters — override these when deploying:
+#   sam deploy --parameter-overrides DatabaseUrl=postgres://... JwtSecret=...
+# ---------------------------------------------------------------------------
+Parameters:
+  DatabaseUrl:
+    Type: String
+    Description: PostgreSQL connection string (postgres://user:pass@host:5432/db)
+    NoEcho: true
+  JwtSecret:
+    Type: String
+    Description: Secret key used to sign JWTs
+    NoEcho: true
+  SmtpHost:
+    Type: String
+    Default: ""
+  SmtpPort:
+    Type: String
+    Default: "587"
+  SmtpUser:
+    Type: String
+    Default: ""
+  SmtpPassword:
+    Type: String
+    Default: ""
+    NoEcho: true
+  FeedbackTo:
+    Type: String
+    Default: ""
+
+# ---------------------------------------------------------------------------
+# Globals
+# ---------------------------------------------------------------------------
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Runtime: provided.al2023
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        DATABASE_URL: !Ref DatabaseUrl
+        JWT_SECRET: !Ref JwtSecret
+        SMTP_HOST: !Ref SmtpHost
+        SMTP_PORT: !Ref SmtpPort
+        SMTP_USER: !Ref SmtpUser
+        SMTP_PASSWORD: !Ref SmtpPassword
+        FEEDBACK_TO: !Ref FeedbackTo
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+Resources:
+  MactrackApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: prod
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+        AllowCredentials: false
+
+  MactrackFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      # SAM will run `make build-MactrackFunction` to produce the binary
+      BuildMethod: makefile
+    Properties:
+      CodeUri: .
+      Handler: bootstrap          # must match the binary name produced by the build
+      Events:
+        ApiProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref MactrackApi
+            Path: /{proxy+}
+            Method: ANY
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+  ApiUrl:
+    Description: "API Gateway endpoint — set this as VITE_API_BASE_URL in Cloudflare Pages"
+    Value: !Sub "https://${MactrackApi}.execute-api.${AWS::Region}.amazonaws.com/prod"

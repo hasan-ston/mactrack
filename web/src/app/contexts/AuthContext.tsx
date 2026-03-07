@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { apiUrl } from "../lib/api";
 
 // Shape of the data we store after a successful login
 interface AuthUser {
@@ -88,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
-      const res = await fetch("/api/auth/refresh", {
+      const res = await fetch(apiUrl("/api/auth/refresh"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: refreshToken }),
@@ -110,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (email: string, password: string) => {
-    const res = await fetch("/api/auth/login", {
+    const res = await fetch(apiUrl("/api/auth/login"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -156,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (typeof program !== "undefined") body.program = program;
     if (typeof yearOfStudy !== "undefined") body.year_of_study = yearOfStudy;
 
-    const res = await fetch("/api/auth/register", {
+    const res = await fetch(apiUrl("/api/auth/register"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
