@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import {
   User, BookOpen, Calendar, Star, TrendingUp, Loader2, Plus,
   CheckCircle2, XCircle, AlertCircle, HelpCircle, ChevronDown, ChevronUp,
-  Check, ArrowRight
+  Check, ArrowRight, ShieldCheck, RotateCcw
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -423,6 +423,36 @@ function DegreeValidation({
   // section index → whether the section accordion is open
   const [sectionExpanded, setSectionExpanded] = useState<Record<number, boolean>>({});
 
+  // Manually overridden prerequisite warnings — persisted per-user in localStorage
+  // Key format: "mactrack:prereq_overrides:<userID>"
+  const lsKey = `mactrack:prereq_overrides:${userID}`;
+  const [overriddenWarnings, setOverriddenWarnings] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(lsKey);
+      return stored ? new Set<string>(JSON.parse(stored)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
+
+  const overrideWarning = (course: string) => {
+    setOverriddenWarnings(prev => {
+      const next = new Set(prev);
+      next.add(course);
+      try { localStorage.setItem(lsKey, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
+
+  const restoreWarning = (course: string) => {
+    setOverriddenWarnings(prev => {
+      const next = new Set(prev);
+      next.delete(course);
+      try { localStorage.setItem(lsKey, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
+
   useEffect(() => {
     authFetch("/api/programs")
       .then(res => {
@@ -646,16 +676,54 @@ function DegreeValidation({
         <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4 space-y-2">
           <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400 font-medium text-sm">
             <AlertCircle className="h-4 w-4" />
-            Prerequisite Warnings ({validation.prereq_warnings.length})
+            Prerequisite Warnings ({validation.prereq_warnings.filter(w => !overriddenWarnings.has(w.course)).length} active
+            {overriddenWarnings.size > 0 && `, ${overriddenWarnings.size} overridden`})
           </div>
-          {validation.prereq_warnings.map((w, i) => (
-            <div key={i} className="text-sm text-muted-foreground ml-6">
-              <span className="font-medium text-foreground">{w.course}</span>
-              {" "}requires{" "}
-              <span className="font-medium text-foreground">{w.missing_prereq}</span>
-              {" "}which isn't completed yet
-            </div>
-          ))}
+          {validation.prereq_warnings.map((w, i) => {
+            const isOverridden = overriddenWarnings.has(w.course);
+            return (
+              <div
+                key={i}
+                className={`flex items-center justify-between gap-3 ml-6 rounded-md px-2 py-1 transition-colors ${
+                  isOverridden
+                    ? "opacity-50 bg-muted/30"
+                    : ""
+                }`}
+              >
+                <div className="text-sm text-muted-foreground flex-1 min-w-0">
+                  {isOverridden && (
+                    <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 font-medium mr-1.5">
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      Overridden —
+                    </span>
+                  )}
+                  <span className="font-medium text-foreground">{w.course}</span>
+                  {" "}requires{" "}
+                  <span className="font-medium text-foreground">{w.missing_prereq}</span>
+                  {" "}which isn't completed yet
+                </div>
+                {isOverridden ? (
+                  <button
+                    onClick={() => restoreWarning(w.course)}
+                    title="Restore warning"
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border/60 rounded px-2 py-0.5 shrink-0 transition-colors"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Restore
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => overrideWarning(w.course)}
+                    title="Manually override this prerequisite warning"
+                    className="flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-400 hover:text-foreground border border-yellow-500/40 hover:border-border rounded px-2 py-0.5 shrink-0 transition-colors"
+                  >
+                    <ShieldCheck className="h-3 w-3" />
+                    Override
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
