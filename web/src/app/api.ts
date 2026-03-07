@@ -15,6 +15,8 @@ function isTokenExpired(token: string): boolean {
   }
 }
 
+import { apiFetch } from "./lib/apiClient";
+
 // Attempts to exchange the refresh token for a new access token.
 // Returns the new access token, or null if refresh fails.
 async function refreshAccessToken(): Promise<string | null> {
@@ -22,7 +24,7 @@ async function refreshAccessToken(): Promise<string | null> {
   if (!refreshToken) return null;
 
   try {
-    const res = await fetch("/api/auth/refresh", {
+    const res = await apiFetch("/api/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),
@@ -64,7 +66,7 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
     token = refreshed;
   }
 
-  return fetch(url, {
+  return apiFetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",

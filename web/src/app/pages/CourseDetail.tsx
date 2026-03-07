@@ -4,6 +4,7 @@ import { ArrowLeft, BarChart3, BookOpen, Users, Star, TrendingUp, Clock, CheckCi
 import { AddToPlannerDialog } from "../components/AddToPlannerDialog";
 import { unitsFromCourseNumber } from "../lib/courseUtils";
 import { Button } from "../components/ui/button";
+import { apiFetch } from "../lib/apiClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
@@ -92,7 +93,7 @@ export function CourseDetail() {
       ? `/api/courses/${courseId}`
       : `/api/courses/${subject}/${courseNumber}`;
 
-    fetch(url)
+    apiFetch(url)
       .then(res => {
         if (res.status === 404) { setCourseNotFound(true); return null; }
         if (!res.ok) throw new Error(`API error: ${res.status}`);
@@ -120,7 +121,7 @@ export function CourseDetail() {
     if (!course) return;
 
     setRequisitesLoading(true);
-    fetch(`/api/courses/${course.subject}/${course.course_number}/requisites`)
+    apiFetch(`/api/courses/${course.subject}/${course.course_number}/requisites`)
       .then(res => res.json())
       .then((data: RequisitesResponse) => setRequisites(data))
       .catch(err => console.error("Failed to fetch requisites:", err))
@@ -131,7 +132,7 @@ export function CourseDetail() {
   useEffect(() => {
     if (!course) return;
     setInstructorsLoading(true);
-    fetch(`/api/courses/${course.id}/instructors`)
+    apiFetch(`/api/courses/${course.id}/instructors`)
       .then(res => (res.ok ? res.json() : []))
       .then((data: Instructor[]) => setInstructors(Array.isArray(data) ? data : []))
       .catch(() => setInstructors([]))

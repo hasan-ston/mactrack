@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { Mail, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { apiFetch } from "../lib/apiClient";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
@@ -41,7 +42,7 @@ export default function ForgotPassword() {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/forgot-password", {
+      const res = await apiFetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
