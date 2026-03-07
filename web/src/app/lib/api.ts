@@ -18,8 +18,6 @@ async function getAccessTokenFromStorageOrGetter(): Promise<string | null> {
   return localStorage.getItem("mactrack_access");
 }
 
-import { apiFetch } from "./apiClient";
-
 export async function authFetch(input: RequestInfo, init?: RequestInit): Promise<Response> {
   const makeRequest = async (token?: string) => {
     const headers = new Headers(init?.headers as HeadersInit || {});
@@ -27,7 +25,7 @@ export async function authFetch(input: RequestInfo, init?: RequestInit): Promise
     if (!headers.get("Content-Type") && !(init && init.body instanceof FormData)) {
       headers.set("Content-Type", "application/json");
     }
-    return apiFetch(input, { ...(init || {}), headers });
+    return fetch(input, { ...(init || {}), headers });
   };
 
   const access = await getAccessTokenFromStorageOrGetter();
@@ -40,7 +38,7 @@ export async function authFetch(input: RequestInfo, init?: RequestInit): Promise
   if (!refresh) return makeRequest();
 
   try {
-    const r = await apiFetch("/api/auth/refresh", {
+    const r = await fetch("/api/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refresh }),

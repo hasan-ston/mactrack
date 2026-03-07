@@ -7,7 +7,6 @@ import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card";
 import { useAuth } from "../contexts/AuthContext";
-import { apiFetch } from "../lib/apiClient";
 
 // Shape returned by GET /api/programs
 interface APIProgram {
@@ -37,7 +36,7 @@ function ProgramPicker({
 
   // Fetch all programs once on mount — public endpoint, no auth needed
   useEffect(() => {
-    apiFetch("/api/programs")
+    fetch("/api/programs")
       .then(res => res.json())
       .then((data: APIProgram[]) => {
         // Sort alphabetically by name for easier scanning

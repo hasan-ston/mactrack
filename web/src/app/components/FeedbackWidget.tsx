@@ -7,7 +7,6 @@ import { Label } from "./ui/label";
 import { cn } from "./ui/utils";
 import { useLocation } from "react-router";
 import { toast } from "sonner";
-import { apiFetch } from "../lib/apiClient";
 
 type SubmitState = "idle" | "sending" | "sent";
 
@@ -69,7 +68,7 @@ export function FeedbackWidget() {
 
     setSubmitState("sending");
     try {
-      const res = await apiFetch("/api/feedback", {
+      const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
