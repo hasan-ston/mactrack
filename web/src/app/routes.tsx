@@ -11,6 +11,8 @@ import Login from "./pages/Login";
 import { Register } from "./pages/Register";
 import { NotFound } from "./pages/NotFound";
 import { Contributors } from "./pages/Contributors";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 export const router = createBrowserRouter([
   {
@@ -27,6 +29,8 @@ export const router = createBrowserRouter([
       { path: "planner", Component: DegreePlanner },
       { path: "login", Component: Login },
       { path: "signup", Component: Register },
+      { path: "forgot-password", Component: ForgotPassword },
+      { path: "reset-password", Component: ResetPassword },
       { path: "contributors", Component: Contributors },
       { path: "*", Component: NotFound },
     ],

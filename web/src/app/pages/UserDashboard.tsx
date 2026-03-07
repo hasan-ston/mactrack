@@ -475,7 +475,22 @@ function DegreeValidation({
 
   if (!validation) return null;
 
-  const sections = buildDegreeSections(validation.groups);
+  const rawSections = buildDegreeSections(validation.groups);
+
+  // For year 2+ students in specialized programs (e.g. Computer Engineering)
+  // whose requirement tree doesn't include Level I (those belonged to the
+  // gateway program like "Engineering I"), inject a synthetic Level I section
+  // so the student can still see their first year acknowledged as complete.
+  const sections: DegreeSection[] = (() => {
+    if (yearOfStudy >= 2 && !rawSections.some(s => s.levelYear === 1)) {
+      return [
+        { heading: "Level I", levelYear: 1, items: [] },
+        ...rawSections,
+      ];
+    }
+    return rawSections;
+  })();
+
   const nonHeaderGroups = validation.groups.filter(g => !g.is_header);
   const satisfiedCount = nonHeaderGroups.filter(g => g.satisfied).length;
   const totalGroups = nonHeaderGroups.length;
@@ -485,20 +500,31 @@ function DegreeValidation({
    * Section open/close state.
    * Default: only the section whose levelYear matches the user's current year is open;
    * past years (already done) and future years start collapsed.
+   * Accepts an optional sec parameter so it works correctly with a filtered sections list.
    */
-  const isSectionOpen = (si: number): boolean => {
+  const isSectionOpen = (si: number, sec?: DegreeSection): boolean => {
     if (si in sectionExpanded) return sectionExpanded[si];
-    const sec = sections[si];
-    if (!sec || sec.levelYear === null) return true; // ungrouped items → always open
-    return sec.levelYear === yearOfStudy;
+    const s = sec ?? sections[si];
+    if (!s || s.levelYear === null) return true; // ungrouped items → always open
+    return s.levelYear === yearOfStudy;
   };
 
-  /** Render a single requirement-group row (the leaf items inside a section). */
-  const renderGroupRow = (group: GroupResult, si: number, gi: number) => {
+  /** Render a single requirement-group row (the leaf items inside a section).
+   *  When `sectionForceDone` is true the parent section is a past academic year
+   *  — override every sub-group to show as fully completed so the UI is
+   *  consistent with the section header's "Complete ✓" badge.
+   */
+  const renderGroupRow = (group: GroupResult, si: number, gi: number, sectionForceDone = false) => {
+    // When the parent section is force-completed, override the group to
+    // appear satisfied so it doesn't contradict the "Complete ✓" header.
+    const g: GroupResult = sectionForceDone
+      ? { ...group, satisfied: true, units_completed: group.units_required, missing_courses: [] }
+      : group;
+
     const key = `${si}-${gi}`;
     const isOpen = !!groupExpanded[key];
-    const hasDetail = group.missing_courses.length > 0 ||
-      (group.units_required > 0 && group.units_completed < group.units_required);
+    const hasDetail = g.missing_courses.length > 0 ||
+      (g.units_required > 0 && g.units_completed < g.units_required);
     return (
       <div key={key} className="border rounded-lg overflow-hidden">
         <button
@@ -509,32 +535,32 @@ function DegreeValidation({
           ].join(" ")}
         >
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            {group.satisfied ? (
+            {g.satisfied ? (
               <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
-            ) : group.units_completed > 0 ? (
+            ) : g.units_completed > 0 ? (
               <AlertCircle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
-            ) : group.missing_courses.length === 0 ? (
+            ) : g.missing_courses.length === 0 ? (
               <HelpCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             ) : (
               <XCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
             )}
-            <span className="text-sm font-medium truncate">{group.heading}</span>
+            <span className="text-sm font-medium truncate">{g.heading}</span>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0 ml-2">
-            {group.units_required > 0 && (
+            {g.units_required > 0 && (
               <span className="text-xs text-muted-foreground">
-                {group.units_completed}/{group.units_required} units
+                {g.units_completed}/{g.units_required} units
               </span>
             )}
             <Badge
-              variant={group.satisfied ? "default" : "outline"}
-              className={group.satisfied
+              variant={g.satisfied ? "default" : "outline"}
+              className={g.satisfied
                 ? "bg-green-500/20 text-green-700 border-green-500/30 dark:text-green-400"
-                : group.units_completed > 0
+                : g.units_completed > 0
                   ? "bg-yellow-500/10 text-yellow-700 border-yellow-500/30 dark:text-yellow-400"
                   : ""}
             >
-              {group.satisfied ? "Done" : group.units_completed > 0 ? "Partial" : "Missing"}
+              {g.satisfied ? "Done" : g.units_completed > 0 ? "Partial" : "Missing"}
             </Badge>
             {hasDetail && (
               isOpen
@@ -544,11 +570,11 @@ function DegreeValidation({
           </div>
         </button>
 
-        {isOpen && group.missing_courses.length > 0 && (
+        {isOpen && g.missing_courses.length > 0 && (
           <div className="border-t px-4 py-3 bg-muted/20">
             <p className="text-xs text-muted-foreground mb-2 font-medium">Still needed:</p>
             <div className="flex flex-wrap gap-2">
-              {group.missing_courses.map((code, j) => {
+              {g.missing_courses.map((code, j) => {
                 const parts = code.split(" ");
                 const subject = parts[0];
                 const courseNumber = parts.slice(1).join(" ");
@@ -579,10 +605,10 @@ function DegreeValidation({
             </div>
           </div>
         )}
-        {isOpen && group.missing_courses.length === 0 && group.units_completed < group.units_required && (
+        {isOpen && g.missing_courses.length === 0 && g.units_completed < g.units_required && (
           <div className="border-t px-4 py-3 bg-muted/20">
             <p className="text-xs text-muted-foreground">
-              {group.units_required - group.units_completed} units of elective credit still needed
+              {g.units_required - g.units_completed} units of elective credit still needed
             </p>
           </div>
         )}
@@ -635,9 +661,12 @@ function DegreeValidation({
 
       {/* Year-level sections */}
       <div className="space-y-3">
-        {sections.map((sec, si) => {
-          // A past level (e.g. Level I for a Year-2 student) is treated as
-          // fully complete regardless of actual plan data.
+        {sections
+          .map((sec, si) => {
+          // All levels before the current year are treated as fully complete
+          // (forceDone = true), regardless of actual plan data.
+          // This means a Year-3 student sees Level I and Level II both marked
+          // "Complete ✓", plus Level III (current) and Level IV (future).
           const forceDone = sec.levelYear !== null && sec.levelYear < yearOfStudy;
           const allSatisfied = forceDone || sec.items.every(g => g.satisfied);
           const anySatisfied = forceDone || sec.items.some(g => g.satisfied || g.units_completed > 0);
@@ -645,13 +674,13 @@ function DegreeValidation({
           const totalComp = forceDone
             ? totalReq
             : sec.items.reduce((s, g) => s + g.units_completed, 0);
-          const isOpen = isSectionOpen(si);
+          const isOpen = isSectionOpen(si, sec);
 
           // No section heading — render items directly without a wrapper accordion
           if (sec.heading === "") {
             return (
               <div key={si} className="space-y-2">
-                {sec.items.map((g, gi) => renderGroupRow(g, si, gi))}
+                {sec.items.map((g, gi) => renderGroupRow(g, si, gi, forceDone))}
               </div>
             );
           }
@@ -700,12 +729,16 @@ function DegreeValidation({
               {/* Section children */}
               {isOpen && (
                 <div className="p-3 space-y-2">
-                  {sec.items.length === 0 ? (
+                  {sec.items.length === 0 && forceDone ? (
+                    <p className="text-xs text-muted-foreground text-center py-3">
+                      ✓ Completed as part of your first-year program.
+                    </p>
+                  ) : sec.items.length === 0 ? (
                     <p className="text-xs text-muted-foreground text-center py-3">
                       No specific sub-requirements listed for this level.
                     </p>
                   ) : (
-                    sec.items.map((g, gi) => renderGroupRow(g, si, gi))
+                    sec.items.map((g, gi) => renderGroupRow(g, si, gi, forceDone))
                   )}
                 </div>
               )}

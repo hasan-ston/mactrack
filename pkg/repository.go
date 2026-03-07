@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -1207,4 +1208,56 @@ func (r *Repository) GetAllDepartments() ([]string, error) {
 		deps = append(deps, d)
 	}
 	return deps, rows.Err()
+}
+
+// ─── Password-reset token helpers ────────────────────────────────────────────
+
+// CreatePasswordResetToken persists a new one-time reset token.
+// The token expires at expiresAt and can only be consumed once.
+func (r *Repository) CreatePasswordResetToken(userID int, token string, expiresAt time.Time) error {
+	_, err := r.exec(
+		`INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES (?, ?, ?)`,
+		token, userID, expiresAt,
+	)
+	return err
+}
+
+// GetPasswordResetToken looks up a token and returns the associated userID.
+// Returns (0, false, nil) when the token does not exist, is expired, or was already used.
+func (r *Repository) GetPasswordResetToken(token string) (userID int, valid bool, err error) {
+	var uid int
+	var expiresAt time.Time
+	var usedAt sql.NullTime
+	row := r.queryRow(
+		`SELECT user_id, expires_at, used_at FROM password_reset_tokens WHERE token = ?`, token,
+	)
+	if err = row.Scan(&uid, &expiresAt, &usedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	if usedAt.Valid {
+		return 0, false, nil // already consumed
+	}
+	if time.Now().After(expiresAt) {
+		return 0, false, nil // expired
+	}
+	return uid, true, nil
+}
+
+// MarkPasswordResetTokenUsed stamps used_at so the token can never be replayed.
+func (r *Repository) MarkPasswordResetTokenUsed(token string) error {
+	_, err := r.exec(
+		`UPDATE password_reset_tokens SET used_at = ? WHERE token = ?`, time.Now(), token,
+	)
+	return err
+}
+
+// UpdateUserPassword replaces the bcrypt hash for the given user.
+func (r *Repository) UpdateUserPassword(userID int, newPasswordHash string) error {
+	_, err := r.exec(
+		`UPDATE users SET password_hash = ? WHERE user_id = ?`, newPasswordHash, userID,
+	)
+	return err
 }
