@@ -10,7 +10,6 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { useAuth } from "../contexts/AuthContext";
 import { authFetch } from "../lib/api";
-import { apiFetch } from "../lib/apiClient";
 import { unitsFromCourseNumber } from "../lib/courseUtils";
 import { getSubjectColor } from "../data/mockData";
 
@@ -138,10 +137,9 @@ export function DegreePlanner() {
   // The multi-token backend search means "compsci 2" or "software eng" work correctly.
   const searchCourses = useCallback((q: string) => {
     setSearchLoading(true);
-    (async () => {
-      try {
-        const res = await apiFetch(`/api/courses?q=${encodeURIComponent(q)}&limit=50`);
-        const data: { courses: APICourse[]; total: number } = await res.json();
+    fetch(`/api/courses?q=${encodeURIComponent(q)}&limit=50`)
+      .then(res => res.json())
+      .then((data: { courses: APICourse[]; total: number }) => {
         const results = data?.courses ?? [];
         const plannedKeys = new Set(
           planItems.map(pi => `${pi.subject}-${pi.course_number}`)
@@ -149,12 +147,9 @@ export function DegreePlanner() {
         setSearchResults(
           results.filter(c => !plannedKeys.has(`${c.subject}-${c.course_number}`))
         );
-      } catch {
-        setSearchResults([]);
-      } finally {
-        setSearchLoading(false);
-      }
-    })();
+      })
+      .catch(() => setSearchResults([]))
+      .finally(() => setSearchLoading(false));
   }, [planItems]);
 
   useEffect(() => {
