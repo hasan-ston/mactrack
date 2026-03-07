@@ -17,6 +17,9 @@ build/
 .env.*
 !.env.example
 
+# Cloudflare Wrangler local dev secrets (never commit)
+.dev.vars
+
 # System
 .DS_Store
 Thumbs.db
@@ -29,7 +32,6 @@ Thumbs.db
 .idea/
 
 # Misc
-web/package-lock.json
 __pycache__
 #database/courses.db
 codex.md

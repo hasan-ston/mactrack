@@ -204,6 +204,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         addr,
+		Handler:      pkg.CORSMiddleware(http.DefaultServeMux),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
