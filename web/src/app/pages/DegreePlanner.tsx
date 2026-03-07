@@ -154,13 +154,15 @@ export function DegreePlanner() {
 
   useEffect(() => {
     if (!dialogOpen) return;
+  
+    if (searchQuery.trim() === "") {
+      searchCourses("");
+      return;
+    }
+  
     const timer = setTimeout(() => searchCourses(searchQuery), 300);
     return () => clearTimeout(timer);
   }, [searchQuery, dialogOpen, searchCourses]);
-
-  useEffect(() => {
-    if (dialogOpen) searchCourses("");
-  }, [dialogOpen, searchCourses]);
 
   useEffect(() => {
     if (!dialogOpen) {
@@ -287,7 +289,7 @@ export function DegreePlanner() {
             </Button>
           </DialogTrigger>
 
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add Course to Plan</DialogTitle>
               <DialogDescription>
@@ -295,7 +297,7 @@ export function DegreePlanner() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0">
               <div className="space-y-2">
                 <Label>Search Courses</Label>
                 <Input
@@ -355,7 +357,7 @@ export function DegreePlanner() {
                 </div>
               </div>
 
-              <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg">
+              <div className="space-y-2 h-60 overflow-y-auto border rounded-lg">
                 {searchLoading ? (
                   <div className="flex justify-center py-8">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
