@@ -16,6 +16,10 @@ build/
 .env
 .env.*
 !.env.example
+samconfig.toml
+
+# AWS SAM build artifacts
+.aws-sam/
 
 # System
 .DS_Store

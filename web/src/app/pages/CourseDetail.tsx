@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router";
 import { ArrowLeft, BarChart3, BookOpen, Users, Star, TrendingUp, Clock, CheckCircle2 } from "lucide-react";
 import { AddToPlannerDialog } from "../components/AddToPlannerDialog";
 import { unitsFromCourseNumber } from "../lib/courseUtils";
+import { apiUrl } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -120,7 +121,7 @@ export function CourseDetail() {
     if (!course) return;
 
     setRequisitesLoading(true);
-    fetch(`/api/courses/${course.subject}/${course.course_number}/requisites`)
+    fetch(apiUrl(`/api/courses/${course.subject}/${course.course_number}/requisites`))
       .then(res => res.json())
       .then((data: RequisitesResponse) => setRequisites(data))
       .catch(err => console.error("Failed to fetch requisites:", err))
@@ -131,7 +132,7 @@ export function CourseDetail() {
   useEffect(() => {
     if (!course) return;
     setInstructorsLoading(true);
-    fetch(`/api/courses/${course.id}/instructors`)
+    fetch(apiUrl(`/api/courses/${course.id}/instructors`))
       .then(res => (res.ok ? res.json() : []))
       .then((data: Instructor[]) => setInstructors(Array.isArray(data) ? data : []))
       .catch(() => setInstructors([]))

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Slider } from "../components/ui/slider";
 import { Label } from "../components/ui/label";
 import { Card, CardContent } from "../components/ui/card";
+import { apiUrl } from "../lib/api";
 
 interface Instructor {
   instructor_id: number;
@@ -70,7 +71,7 @@ export function BrowseInstructors() {
 
   // Fetch departments
   useEffect(() => {
-    fetch(`/api/instructors/departments`)
+    fetch(apiUrl(`/api/instructors/departments`))
       .then((res) => res.json())
       .then((data) => setDepartments(data))
       .catch(console.error);
@@ -87,7 +88,7 @@ export function BrowseInstructors() {
     if (selectedDepartment !== "all") params.set("department", selectedDepartment);
     if (minRating[0] > 0) params.set("min_rating", String(minRating[0]));
 
-    fetch(`/api/instructors?${params}`)
+    fetch(apiUrl(`/api/instructors?${params}`))
       .then((res) => res.json())
       .then((data: InstructorsResponse) => {
         setInstructors(data.instructors || []);

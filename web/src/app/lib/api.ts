@@ -1,3 +1,11 @@
+// In production the frontend lives on a different origin from the API.
+// VITE_API_BASE_URL is set in Cloudflare Pages env vars and baked in at build time.
+// In dev this is empty so /api/... paths hit the Vite dev-server proxy on :8080.
+const API_BASE: string = (import.meta.env.VITE_API_BASE_URL as string) ?? "";
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
 // tokenGetter can be registered by the app so API utilities don't need to
 // read localStorage directly (useful for SSR / testing and centralizing logic).
 let tokenGetter: (() => Promise<string | null>) | null = null;
@@ -25,7 +33,7 @@ export async function authFetch(input: RequestInfo, init?: RequestInit): Promise
     if (!headers.get("Content-Type") && !(init && init.body instanceof FormData)) {
       headers.set("Content-Type", "application/json");
     }
-    return fetch(input, { ...(init || {}), headers });
+    return fetch(typeof input === "string" ? apiUrl(input) : input, { ...(init || {}), headers });
   };
 
   const access = await getAccessTokenFromStorageOrGetter();
@@ -38,7 +46,7 @@ export async function authFetch(input: RequestInfo, init?: RequestInit): Promise
   if (!refresh) return makeRequest();
 
   try {
-    const r = await fetch("/api/auth/refresh", {
+    const r = await fetch(apiUrl("/api/auth/refresh"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refresh }),
