@@ -62,6 +62,20 @@ func main() {
 		}
 		pkg.RefreshHandler()(w, r)
 	})
+	http.HandleFunc("/api/auth/forgot-password", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		pkg.ForgotPasswordHandler(repo)(w, r)
+	})
+	http.HandleFunc("/api/auth/reset-password", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		pkg.ResetPasswordHandler(repo)(w, r)
+	})
 
 	// --- Course routes (public) ---
 	http.HandleFunc("/api/courses", pkg.CoursesHandler(repo))
