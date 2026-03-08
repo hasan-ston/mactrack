@@ -90,8 +90,8 @@ export function CourseDetail() {
     // /courses/:id                     (from CourseBrowser)
     // /courses/:subject/:courseNumber  (from DegreePlanner)
     const url = courseId
-      ? `/api/courses/${courseId}`
-      : `/api/courses/${subject}/${courseNumber}`;
+      ? apiUrl(`/api/courses/${courseId}`)
+      : apiUrl(`/api/courses/${subject}/${courseNumber}`);
 
     fetch(url)
       .then(res => {

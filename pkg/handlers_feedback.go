@@ -48,15 +48,15 @@ func FeedbackHandler() http.HandlerFunc {
 			return
 		}
 
-		// Fire-and-forget — don't block the HTTP response on SMTP latency.
-		go func() {
-			if err := sendFeedbackEmail(req); err != nil {
-				log.Printf("[feedback] email send error: %v", err)
-			} else {
-				log.Printf("[feedback] email sent (from=%q page=%q len=%d)",
-					req.Email, req.Page, len(req.Message))
-			}
-		}()
+		// Send the email synchronously. Background goroutines started from a
+		// Lambda handler may be frozen or not run to completion when the
+		// invocation finishes, so fire-and-forget is unsafe for delivery.
+		if err := sendFeedbackEmail(req); err != nil {
+			log.Printf("[feedback] email send error: %v", err)
+		} else {
+			log.Printf("[feedback] email sent (from=%q page=%q len=%d)",
+				req.Email, req.Page, len(req.Message))
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
