@@ -13,6 +13,7 @@ import { NotFound } from "./pages/NotFound";
 import { Contributors } from "./pages/Contributors";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export const router = createBrowserRouter([
   {
@@ -25,8 +26,14 @@ export const router = createBrowserRouter([
       { path: "courses/:subject/:courseNumber", Component: CourseDetail },
       { path: "professors", Component: BrowseInstructors },
       { path: "professors/:professorId", Component: ProfessorProfile },
-      { path: "dashboard", Component: UserDashboard },
-      { path: "planner", Component: DegreePlanner },
+      // Protected routes — unauthenticated visitors are redirected to /login
+      {
+        element: <ProtectedRoute />,
+        children: [
+          { path: "dashboard", Component: UserDashboard },
+          { path: "planner", Component: DegreePlanner },
+        ],
+      },
       { path: "login", Component: Login },
       { path: "signup", Component: Register },
       { path: "forgot-password", Component: ForgotPassword },
