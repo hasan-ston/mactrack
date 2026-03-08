@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router";
+import { useNavigate, useLocation, Link } from "react-router";
 import { Mail, Lock, LogIn } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -10,6 +10,9 @@ import { useAuth } from "../contexts/AuthContext";
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Redirect back to the page the user was trying to reach, or dashboard by default
+  const from = (location.state as { from?: string } | null)?.from ?? "/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -58,7 +61,7 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate("/dashboard");
+      navigate(from, { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed. Check your email and password.");
     } finally {

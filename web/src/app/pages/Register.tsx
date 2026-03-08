@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useLocation } from "react-router";
 import { UserPlus, Mail, Lock, User, GraduationCap, Search, ChevronDown, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -154,6 +154,9 @@ function ProgramPicker({
 export function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Redirect back to the page the user was trying to reach, or dashboard by default
+  const from = (location.state as { from?: string } | null)?.from ?? "/dashboard";
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -237,7 +240,7 @@ export function Register() {
     setLoading(true);
     try {
       await register(email, password, name, program || null, year ? Number(year) : null);
-      navigate("/dashboard");
+      navigate(from, { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
